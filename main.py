@@ -52,6 +52,7 @@ def load_emulators(filter_data):
         (lambda: _new_instance("emulators.pyboy", "PyBoy"), ["PyBoy", "pyboy"]),
         (lambda: _new_instance("emulators.ares", "Ares"), ["ares"]),
         (lambda: _new_instance("emulators.emmy", "Emmy"), ["Emmy", "emmy"]),
+        (lambda: _new_instance("emulators.docboy", "DocBoy"), ["DocBoy", "docboy"]),
         (lambda: _new_instance("emulators.gameroy", "GameRoy"), ["gameroy", "GameRoy"]),
     ]
 
