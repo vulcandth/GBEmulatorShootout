@@ -11,7 +11,11 @@ class DocBoy(Emulator):
         self.title_check = lambda title: "DocBoy" in title
 
     def setup(self):
-        downloadGithubRelease("Docheinstein/docboy", "downloads/docboy.zip")
+        downloadGithubRelease(
+            "Docheinstein/docboy",
+            "downloads/docboy.zip",
+            filter=lambda n: "docboy-sdl" in n.lower() and "windows" in n.lower() and n.endswith(".zip"),
+        )
         extract("downloads/docboy.zip", "emu/docboy")
         setDPIScaling("emu/docboy/docboy-sdl.exe")
         shutil.copyfile(os.path.join(os.path.dirname(__file__), "docboy.ini"),
@@ -20,4 +24,5 @@ class DocBoy(Emulator):
     def startProcess(self, rom, *, model, required_features):
         if model != DMG:
             return None
-        return subprocess.Popen(["emu/docboy/docboy-sdl.exe", os.path.abspath(rom), "-c", "docboy.ini"], cwd="emu/docboy")
+        return subprocess.Popen(["emu/docboy/docboy-sdl.exe", os.path.abspath(rom), "-c", "docboy.ini", "-z", "1"],
+                                cwd="emu/docboy")
