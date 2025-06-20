@@ -3,6 +3,8 @@ from emulator import Emulator
 from test import *
 import os
 import subprocess
+import PIL.Image
+import PIL.ImageOps
 
 
 class VibeEmu(Emulator):
@@ -24,3 +26,12 @@ class VibeEmu(Emulator):
         if mode is None:
             return None
         return subprocess.Popen([self.exe, mode, os.path.abspath(rom)], cwd=self.path)
+
+    def getScreenshot(self):
+        screenshot = super().getScreenshot()
+        if screenshot is None:
+            return None
+        screenshot = screenshot.resize((160, 144), PIL.Image.NEAREST)
+        screenshot = screenshot.convert(mode="L", dither=PIL.Image.NONE)
+        screenshot = PIL.ImageOps.autocontrast(screenshot)
+        return screenshot
