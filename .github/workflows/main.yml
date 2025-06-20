@@ -69,7 +69,7 @@ jobs:
         run: |
           git config --global user.name "github actions"
           git config --global user.email "github@actions"
-          git clone --single-branch --branch gh-pages https://github.com/daid/GBEmulatorShootout.git pages
+          git clone --single-branch --branch gh-pages https://github.com/${GITHUB_REPOSITORY}.git pages
           cp *.json pages/
           cd pages
           python build.py
