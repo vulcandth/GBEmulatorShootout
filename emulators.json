@@ -62,5 +62,9 @@
   "gameroy": {
     "file": "gameroy.json",
     "url": "https://github.com/Rodrigodd/gameroy"
+  },
+  "vibeEmu": {
+    "file": "vibeemu.json",
+    "url": "https://github.com/vulcandth/vibeEmu"
   }
 }
