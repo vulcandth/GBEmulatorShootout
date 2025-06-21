@@ -10,6 +10,8 @@ import sys
 import argparse
 import json
 import traceback
+import io
+import base64
 
 import testroms.blarg
 import testroms.mooneye
@@ -39,6 +41,28 @@ from emulators.gameroy import GameRoy
 from emulators.vibeemu import VibeEmu
 from util import *
 from test import *
+
+
+def _worker(emulator_cls, tests_pickle):
+    """
+    Spawned in a fresh interpreter; rebuild the emulator object and run all
+    tests that caller pickled for us.
+    """
+    import pickle, io, base64, PIL.Image
+    emulator = emulator_cls()
+    results = {}
+    try:
+        emulator.setup()
+        for test in pickle.loads(tests_pickle):
+            result = emulator.run(test)
+            if result and result.screenshot:
+                buf = io.BytesIO()
+                result.screenshot.save(buf, format="PNG")
+                result.screenshot = base64.b64encode(buf.getvalue()).decode()
+            results[test] = result
+    finally:
+        emulator.undoSetup()
+    return results
 
 
 emulators = [
@@ -97,6 +121,9 @@ if __name__ == "__main__":
     parser.add_argument('--get-startuptime', action='store_true')
     parser.add_argument('--dump-emulators-json', action='store_true')
     parser.add_argument('--dump-tests-json', action='store_true')
+# How many worker processes (= emulators in flight) at once.
+# If omitted we fall back to os.cpu_count().
+    parser.add_argument('--parallel', type=int)
     args = parser.parse_args()
 
     for model in args.model or []:
@@ -168,33 +195,52 @@ if __name__ == "__main__":
         f.write("</body></html>")
         sys.exit()
 
-    results = {}
-    for emulator in emulators:
-        results[emulator] = {}
-        try:
-            emulator.setup()
-        except Exception:
-            print(f'Exception while setting up {emulator}')
-            traceback.print_exc()
-            continue
+    parallel = args.parallel or os.cpu_count()
+    if parallel > 1:
+        import pickle, os
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        os.environ["VIBEEMU_PARALLEL"] = "1"
 
-        for test in tests:
-            skip = False
-            for feature in test.required_features:
-                if feature not in emulator.features:
-                    skip = True
-                    print("Skipping %s on %s because of missing feature %s" % (test, emulator, feature))
-            if not skip:
-                try:
-                    result = emulator.run(test)
-                    if result is not None:
-                        results[emulator][test] = result
-                except KeyboardInterrupt:
-                    exit(0)
-                except:
-                    print("Emulator %s failed to run properly" % (emulator))
-                    traceback.print_exc()
-        emulator.undoSetup()
+        tasks = [(type(e), pickle.dumps(tests)) for e in emulators]
+        results = {e: {} for e in emulators}
+
+        with ProcessPoolExecutor(max_workers=parallel) as pool:
+            futures = {pool.submit(_worker, *t): emu for t, emu in zip(tasks, emulators)}
+            for fut in as_completed(futures):
+                emu = futures[fut]
+                for test, r in fut.result().items():
+                    if r and r.screenshot:
+                        b = base64.b64decode(r.screenshot)
+                        r.screenshot = PIL.Image.open(io.BytesIO(b))
+                    results[emu][test] = r
+    else:
+        results = {}
+        for emulator in emulators:
+            results[emulator] = {}
+            try:
+                emulator.setup()
+            except Exception:
+                print(f'Exception while setting up {emulator}')
+                traceback.print_exc()
+                continue
+
+            for test in tests:
+                skip = False
+                for feature in test.required_features:
+                    if feature not in emulator.features:
+                        skip = True
+                        print("Skipping %s on %s because of missing feature %s" % (test, emulator, feature))
+                if not skip:
+                    try:
+                        result = emulator.run(test)
+                        if result is not None:
+                            results[emulator][test] = result
+                    except KeyboardInterrupt:
+                        exit(0)
+                    except:
+                        print("Emulator %s failed to run properly" % (emulator))
+                        traceback.print_exc()
+            emulator.undoSetup()
     emulators.sort(key=lambda emulator: len([result[0] for result in results[emulator].values() if result.result != "FAIL"]), reverse=True)
 
     for emulator in emulators:

@@ -24,7 +24,19 @@ class Emulator:
         raise NotImplementedError()
 
     def postWindowCreation(self):
-        pass
+        if os.getenv("VIBEEMU_PARALLEL") == "1":
+            import win32gui, win32con
+            hwnd = findWindow(self.title_check)
+            if hwnd:
+                win32gui.SetWindowPos(
+                    hwnd,
+                    None,
+                    -20000,
+                    -20000,
+                    0,
+                    0,
+                    win32con.SWP_NOSIZE | win32con.SWP_NOZORDER,
+                )
 
     def getScreenshot(self):
         return getScreenshot(self.title_check)
