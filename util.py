@@ -20,43 +20,45 @@ def setupMesa(path):
     os.system(fr'mklink "{os.path.join(path, "libglapi.dll")}" "{os.path.join(dest, "libglapi.dll")}"')
 
 def download(url, filename, fake_headers=False, max_retries=5):
-    if os.path.exists(filename):
-        return
+    import fasteners  # pip install fasteners
+    with fasteners.InterProcessLock(filename + ".lock"):
+        if os.path.exists(filename):
+            return
 
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
-    print("Downloading %s" % (url))
-    headers = {}
-    if fake_headers:
-        headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.146 Safari/537.36'
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        print("Downloading %s" % (url))
+        headers = {}
+        if fake_headers:
+            headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.146 Safari/537.36'
 
-    last_exception = ValueError("max_retries must be greater than 0")
+        last_exception = ValueError("max_retries must be greater than 0")
 
-    for _ in range(max_retries):
-        try:
-            r = requests.get(url, allow_redirects=True, headers=headers, stream=True)
-
-            total_size = int(r.headers.get("Content-Length", 0))
-
-            bar = tqdm(total=total_size, unit='iB', unit_scale=True)
-            
-            tempname = filename + '.downloading'
+        for _ in range(max_retries):
             try:
-                with open(tempname, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=1024):
-                        f.write(chunk)
-                        bar.update(len(chunk))
-                os.rename(tempname, filename)
-                return
-            finally:
-                if os.path.exists(tempname):
-                    os.remove(tempname)
-        except Exception as e:
-            last_exception = e
-            print("Download failed:", str(e))
-            print("Retrying...")
+                r = requests.get(url, allow_redirects=True, headers=headers, stream=True)
 
-    print("Max retries exceeded. Download failed.")
-    raise last_exception
+                total_size = int(r.headers.get("Content-Length", 0))
+
+                bar = tqdm(total=total_size, unit='iB', unit_scale=True)
+
+                tempname = filename + '.downloading'
+                try:
+                    with open(tempname, 'wb') as f:
+                        for chunk in r.iter_content(chunk_size=1024):
+                            f.write(chunk)
+                            bar.update(len(chunk))
+                    os.rename(tempname, filename)
+                    return
+                finally:
+                    if os.path.exists(tempname):
+                        os.remove(tempname)
+            except Exception as e:
+                last_exception = e
+                print("Download failed:", str(e))
+                print("Retrying...")
+
+        print("Max retries exceeded. Download failed.")
+        raise last_exception
 
 def downloadGithubRelease(repo, filename, *, filter=lambda n: "win" in n, allow_prerelease=False):
     if not os.path.exists(filename):
@@ -104,6 +106,33 @@ def findWindow(title_check):
         return results[0]
     return None
 
+def _captureWindow(hwnd):
+    """
+    Return a PIL.Image of HWND’s *client* area via Win32 PrintWindow.
+    Works even when the window is fully obscured.
+    """
+    import win32gui, win32ui, win32con, PIL.Image
+
+    left, top, right, bot = win32gui.GetClientRect(hwnd)
+    w, h = right - left, bot - top
+
+    hdc_window = win32gui.GetWindowDC(hwnd)
+    hdc_src = win32ui.CreateDCFromHandle(hdc_window)
+    hdc_mem = hdc_src.CreateCompatibleDC()
+    bmp = win32ui.CreateBitmap()
+    bmp.CreateCompatibleBitmap(hdc_src, w, h)
+    hdc_mem.SelectObject(bmp)
+
+    win32gui.PrintWindow(hwnd, hdc_mem.GetSafeHdc(), 0)
+    bmpinfo = bmp.GetInfo()
+    bmpstr = bmp.GetBitmapBits(True)
+    img = PIL.Image.frombuffer('RGB', (bmpinfo['bmWidth'], bmpinfo['bmHeight']),
+                               bmpstr, 'raw', 'BGRX', 0, 1)
+
+    win32gui.DeleteObject(bmp.GetHandle())
+    hdc_mem.DeleteDC(); hdc_src.DeleteDC(); win32gui.ReleaseDC(hwnd, hdc_window)
+    return img
+
 def getScreenshot(title_check):
     import win32gui
     hwnd = findWindow(title_check)
@@ -115,9 +144,7 @@ def getScreenshot(title_check):
                 print(hwnd, title)
         win32gui.EnumWindows(f, None)
         return None
-    rect = win32gui.GetClientRect(hwnd)
-    position = win32gui.ClientToScreen(hwnd, (rect[0], rect[1]))
-    return pyautogui.screenshot(region=(position[0], position[1], rect[2], rect[3]))
+    return _captureWindow(hwnd)
 
 def fullscreenScreenshot():
     return pyautogui.screenshot()
