@@ -28,6 +28,10 @@ jobs:
         with:
           python-version: '3.11'
 
+      # Needed for vibeEmu build (cargo).
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
       # Need by Browser-based emulators.
       - uses: nanasess/setup-chromedriver@v2
 
