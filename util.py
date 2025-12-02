@@ -7,6 +7,9 @@ import PIL.Image
 import PIL.ImageChops
 import io
 import base64
+import shutil
+import threading
+import time
 from tqdm import tqdm
 
 def setupMesa(path):
@@ -14,10 +17,26 @@ def setupMesa(path):
     extract("downloads/mesa.7z", "downloads/mesa")
     dest = os.path.join(os.path.dirname(__file__), r'downloads\mesa\x64')
 
-    os.system(fr'del "{os.path.join(path, "opengl32.dll")}"')
-    os.system(fr'del "{os.path.join(path, "libglapi.dll")}"')
-    os.system(fr'mklink "{os.path.join(path, "opengl32.dll")}" "{os.path.join(dest, "opengl32.dll")}"')
-    os.system(fr'mklink "{os.path.join(path, "libglapi.dll")}" "{os.path.join(dest, "libglapi.dll")}"')
+    # Copy required Mesa DLLs into the emulator folder. Creating symbolic links
+    # (mklink) can require elevation on Windows; copying is more reliable.
+    try:
+        for dll in ("opengl32.dll", "libglapi.dll"):
+            src = os.path.join(dest, dll)
+            dst = os.path.join(path, dll)
+            if os.path.exists(dst):
+                try:
+                    os.remove(dst)
+                except PermissionError:
+                    # If we can't remove the existing file, continue and attempt to overwrite
+                    pass
+            shutil.copyfile(src, dst)
+    except PermissionError:
+        print("Warning: insufficient privileges to copy Mesa DLLs into target directory.")
+        print("You may need to run with elevated privileges or copy the files manually:")
+        print(f"  {os.path.join(dest, 'opengl32.dll')} -> {os.path.join(path, 'opengl32.dll')}")
+        print(f"  {os.path.join(dest, 'libglapi.dll')} -> {os.path.join(path, 'libglapi.dll')}")
+    except FileNotFoundError:
+        print("Warning: Mesa build did not contain expected DLLs; check downloads/mesa/x64 folder.")
 
 def download(url, filename, fake_headers=False, max_retries=5):
     if os.path.exists(filename):
@@ -138,3 +157,31 @@ def imageToBase64(img):
     tmp = io.BytesIO()
     img.save(tmp, "png")
     return base64.b64encode(tmp.getvalue()).decode('ascii')
+
+
+def forceSquareCorners(title_check, *, timeout=15.0):
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except ImportError:
+        return
+
+    DWMWA_WINDOW_CORNER_PREFERENCE = 33
+    DWM_CORNER_SQUARE = 1
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        hwnd = findWindow(title_check)
+        if hwnd:
+            try:
+                pref = wintypes.DWORD(DWM_CORNER_SQUARE)
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ctypes.byref(pref), ctypes.sizeof(pref))
+            except (AttributeError, OSError):
+                pass
+            return
+        time.sleep(0.1)
+
+
+def forceSquareCornersAsync(title_check, *, timeout=15.0):
+    threading.Thread(target=forceSquareCorners, kwargs={"title_check": title_check, "timeout": timeout}, daemon=True).start()

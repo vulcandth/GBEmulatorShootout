@@ -7,6 +7,8 @@ import re
 
 
 class Emulicious(Emulator):
+    CORNER_TIMEOUT = 15.0
+
     def __init__(self):
         super().__init__("Emulicious", "https://emulicious.net/", startup_time=1.0, features=(PCM,))
     
@@ -25,7 +27,31 @@ class Emulicious(Emulator):
         #    shutil.copyfile(os.path.join(os.path.dirname(__file__), "emulicious.sgb.ini"), "emu/emulicious/Emulicious.ini")
         else:
             return None
-        return subprocess.Popen(["java", "-jar", "Emulicious.jar", "-throttle", "10000", os.path.abspath(rom)], cwd="emu/emulicious")
+        process = subprocess.Popen(["java", "-jar", "Emulicious.jar", "-throttle", "10000", os.path.abspath(rom)], cwd="emu/emulicious")
+        forceSquareCornersAsync(self.title_check, timeout=self.CORNER_TIMEOUT)
+        return process
+
+    def endProcess(self, p):
+        if p is None:
+            return
+        if self.isProcessAlive(p):
+            try:
+                p.terminate()
+            except Exception:
+                pass
+            try:
+                p.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                if os.name == "nt":
+                    subprocess.run([
+                        "taskkill",
+                        "/PID",
+                        str(p.pid),
+                        "/F",
+                        "/T",
+                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                else:
+                    p.kill()
 
     def getScreenshot(self):
         screenshot = getScreenshot(self.title_check)

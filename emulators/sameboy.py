@@ -40,6 +40,7 @@ class SameBoy(Emulator):
             return None
         process = subprocess.Popen(["emu/sameboy/sameboy.exe", os.path.abspath(rom)], cwd="emu/sameboy")
         self._dismiss_association_prompt_async()
+        forceSquareCornersAsync(self.title_check, timeout=self.PROMPT_TIMEOUT)
         return process
 
     def _dismiss_association_prompt_async(self):
