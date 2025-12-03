@@ -30,10 +30,14 @@ class VibeEmu(Emulator):
         setupMesa(os.path.dirname(self.exe))
 
     def startProcess(self, rom, *, model, required_features):
-        mode = {DMG: "--dmg", CGB: "--cgb"}.get(model)
-        if mode is None:
+        if model == DMG:
+            args = [self.exe, "--dmg", "--dmg-neutral", os.path.abspath(rom)]
+        elif model == CGB:
+            args = [self.exe, "--cgb", os.path.abspath(rom)]
+        else:
             return None
-        return subprocess.Popen([self.exe, mode, os.path.abspath(rom)], cwd=self.path)
+
+        return subprocess.Popen(args, cwd=self.path)
 
     def getScreenshot(self):
         screenshot = super().getScreenshot()
