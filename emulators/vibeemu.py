@@ -9,7 +9,7 @@ import PIL.Image
 
 class VibeEmu(Emulator):
     def __init__(self):
-        super().__init__("vibeEmu", "https://github.com/vulcandth/vibeEmu", startup_time=1.0)
+        super().__init__("vibeEmu", "https://github.com/vulcandth/vibeEmu", startup_time=1.0, features=(PCM,))
         self.title_check = lambda title: title and "vibe" in title.lower()
 
     def setup(self):
