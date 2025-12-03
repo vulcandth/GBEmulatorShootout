@@ -1,0 +1,73 @@
+name: VibeEmu Only
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  vibeemu:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install ChromeDriver
+        uses: nanasess/setup-chromedriver@v2
+
+      - name: Install Scream virtual audio device
+        shell: powershell
+        run: |
+          Start-Service audio*
+          Invoke-WebRequest https://github.com/duncanthrax/scream/releases/download/3.6/Scream3.6.zip -OutFile C:\Scream3.6.zip
+          Expand-Archive -Path C:\Scream3.6.zip -DestinationPath C:\Scream
+          $cert = (Get-AuthenticodeSignature C:\Scream\Install\driver\Scream.sys).SignerCertificate
+          $store = [System.Security.Cryptography.X509Certificates.X509Store]::new("TrustedPublisher", "LocalMachine")
+          $store.Open("ReadWrite")
+          $store.Add($cert)
+          $store.Close()
+          cd C:\Scream\Install\driver
+          C:\Scream\Install\helpers\devcon install Scream.inf *Scream
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Generate shared metadata
+        run: python main.py --dump-tests-json --dump-emulators-json
+
+      - name: Run vibeEmu-only test matrix
+        run: python main.py --emulator vibeEmu
+
+      - name: Prepare vibeEmu artifacts
+        shell: powershell
+        run: |
+          git config --global user.name "github actions"
+          git config --global user.email "github@actions"
+          git clone --single-branch --branch gh-pages https://github.com/${{ github.repository }}.git pages
+          Copy-Item -Path emulators.json, tests.json, vibeemu.json -Destination pages -Force
+          cd pages
+          python build.py
+          git add emulators.json tests.json vibeemu.json index.html
+          $status = git status --porcelain
+          if (-not $status) {
+            Write-Host "No changes to commit"
+            exit 0
+          }
+          git commit -m 'Update vibeEmu results'
+
+      - name: Push page changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: gh-pages
+          directory: pages
