@@ -45,12 +45,17 @@ class VibeEmu(Emulator):
             return None
         width, height = screenshot.size
         target_w, target_h = 160, 144
+        # vibeEmu is a normal desktop window; the captured image can include the
+        # title bar at the top. Crop a 160x144 region aligned to the bottom of
+        # the window so the title bar is excluded.
         scale = min(max(width // target_w, 1), max(height // target_h, 1))
         crop_w = target_w * scale
         crop_h = target_h * scale
         left = max((width - crop_w) // 2, 0)
-        top = max((height - crop_h) // 2, 0)
-        frame = screenshot.crop((left, top, left + crop_w, top + crop_h))
+        top = max(height - crop_h, 0)
+        right = min(left + crop_w, width)
+        bottom = min(top + crop_h, height)
+        frame = screenshot.crop((left, top, right, bottom))
         if frame.size != (target_w, target_h):
             frame = frame.resize((target_w, target_h), PIL.Image.NEAREST)
         return frame.convert("RGB")
