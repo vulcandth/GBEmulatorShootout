@@ -154,9 +154,42 @@ def compareImage(a, b):
     return True
 
 def imageToBase64(img):
-    tmp = io.BytesIO()
-    img.save(tmp, "png")
-    return base64.b64encode(tmp.getvalue()).decode('ascii')
+    if img is None:
+        return ''
+
+    try:
+        w, h = img.size
+        if w <= 0 or h <= 0:
+            return ''
+    except Exception:
+        return ''
+
+    def _encode_png_bytes(pil_img):
+        tmp = io.BytesIO()
+        pil_img.save(tmp, "PNG")
+        return tmp.getvalue()
+
+    try:
+        # Force image data into memory if it is lazily-backed.
+        try:
+            img.load()
+        except Exception:
+            pass
+
+        # Convert + rebuild from raw bytes to strip any tile metadata/state.
+        img2 = img.convert("RGBA")
+        raw = img2.tobytes()
+        img3 = PIL.Image.frombytes("RGBA", img2.size, raw)
+        data = _encode_png_bytes(img3)
+        return base64.b64encode(data).decode('ascii')
+    except Exception:
+        # Best-effort fallbacks; never raise from here.
+        try:
+            img2 = img.copy()
+            data = _encode_png_bytes(img2)
+            return base64.b64encode(data).decode('ascii')
+        except Exception:
+            return ''
 
 
 def forceSquareCorners(title_check, *, timeout=15.0):

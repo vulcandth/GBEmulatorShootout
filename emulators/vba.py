@@ -2,6 +2,7 @@ from util import *
 from emulator import Emulator
 from test import *
 import shutil
+import platform
 
 
 class VBA(Emulator):
@@ -27,8 +28,76 @@ class VBAM(Emulator):
         self.title_check = lambda title: "VisualBoyAdvance-M" in title
 
     def setup(self):
-        downloadGithubRelease("visualboyadvance-m/visualboyadvance-m", "downloads/vba-m.zip", filter=lambda n: "Win" in n and "64" in n and n.endswith(".zip"))
-        extract("downloads/vba-m.zip", "emu/vba-m")
+        def pe_machine_hex(path):
+            # Returns PE machine type as int (e.g., 0x8664 x64, 0xAA64 arm64, 0x014C x86)
+            with open(path, "rb") as f:
+                data = f.read(0x2000)
+            if len(data) < 0x40 or data[0:2] != b"MZ":
+                return None
+            e_lfanew = int.from_bytes(data[0x3C:0x40], "little", signed=False)
+            if e_lfanew + 6 >= len(data):
+                return None
+            if data[e_lfanew:e_lfanew + 4] != b"PE\x00\x00":
+                return None
+            return int.from_bytes(data[e_lfanew + 4:e_lfanew + 6], "little", signed=False)
+
+        host = platform.machine().casefold()
+        if host in {"arm64", "aarch64"}:
+            desired = "arm64"
+        elif host in {"amd64", "x86_64"}:
+            desired = "x64"
+        else:
+            desired = "x86"
+
+        def asset_filter(name):
+            n = name.casefold()
+            if not n.endswith(".zip"):
+                return False
+            if "win" not in n and "windows" not in n:
+                return False
+
+            is_arm = any(tok in n for tok in ["arm64", "aarch64", "arm-"])
+            is_x64 = any(tok in n for tok in ["x64", "amd64", "x86_64", "win64"]) and not any(tok in n for tok in ["arm64", "aarch64"])
+            is_x86 = "x86" in n and "x64" not in n and "win64" not in n and not is_arm
+
+            if desired == "arm64":
+                return is_arm
+            if desired == "x64":
+                return is_x64
+            return is_x86
+
+        def ensure_install():
+            downloadGithubRelease(
+                "visualboyadvance-m/visualboyadvance-m",
+                "downloads/vba-m.zip",
+                filter=asset_filter,
+            )
+            extract("downloads/vba-m.zip", "emu/vba-m")
+
+        ensure_install()
+
+        exe_path = "emu/vba-m/visualboyadvance-m.exe"
+        machine = pe_machine_hex(exe_path) if os.path.exists(exe_path) else None
+        wrong_arch = False
+        if desired == "x64" and machine not in (0x8664, 0x014C):
+            wrong_arch = True
+        if desired == "arm64" and machine != 0xAA64:
+            wrong_arch = True
+        if desired == "x86" and machine != 0x014C:
+            wrong_arch = True
+
+        if wrong_arch:
+            # Clean and retry with a stricter filter (common: ARM64 zip on x64 host).
+            try:
+                shutil.rmtree("emu/vba-m", ignore_errors=True)
+            except Exception:
+                pass
+            try:
+                os.remove("downloads/vba-m.zip")
+            except Exception:
+                pass
+            ensure_install()
+
         setDPIScaling("emu/vba-m/visualboyadvance-m.exe")
         download("https://gbdev.gg8.se/files/roms/bootroms/dmg_boot.bin", "emu/vba-m/dmg_boot.bin")
         download("https://gbdev.gg8.se/files/roms/bootroms/cgb_boot.bin", "emu/vba-m/cgb_boot.bin")

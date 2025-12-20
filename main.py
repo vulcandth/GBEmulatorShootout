@@ -88,6 +88,33 @@ def checkFilter(input, filter_data):
     return False
 
 
+def filterEmulators(emulators, filter_data):
+    if filter_data is None:
+        return emulators
+
+    # If the user provided any positive filter that exactly matches an emulator
+    # name, prefer exact matching to avoid surprises like selecting
+    # "VisualBoyAdvance" also matching "VisualBoyAdvance-M".
+    positive = [f for f in filter_data if not f.startswith("!")]
+    negative = [f[1:] for f in filter_data if f.startswith("!")]
+
+    def norm(s):
+        return str(s).casefold()
+
+    exact_terms = {norm(f) for f in positive}
+    exact_matches = [e for e in emulators if norm(e) in exact_terms]
+
+    if exact_matches:
+        out = exact_matches
+    else:
+        out = [e for e in emulators if checkFilter(e, filter_data)]
+
+    if negative:
+        out = [e for e in out if all(norm(n) not in norm(e) for n in negative)]
+
+    return out
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--test', action='append', help="Filter for tests with keywords")
@@ -109,7 +136,7 @@ if __name__ == "__main__":
         for test in tests
         if checkFilter(test, args.test) and checkFilter(test.model, args.model)
     ]
-    emulators = [emulator for emulator in emulators if checkFilter(emulator, args.emulator)]
+    emulators = filterEmulators(emulators, args.emulator)
 
     print("%d emulators" % (len(emulators)))
     print("%d tests" % (len(tests)))
