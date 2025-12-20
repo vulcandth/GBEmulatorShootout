@@ -4,6 +4,7 @@ from test import *
 import os
 import shutil
 import subprocess
+import time
 import PIL.Image
 
 
@@ -11,6 +12,7 @@ class VibeEmu(Emulator):
     def __init__(self):
         super().__init__("vibeEmu", "https://github.com/vulcandth/vibeEmu", startup_time=1.0, features=(PCM,))
         self.title_check = lambda title: title and "vibe" in title.lower()
+        self._debug_screenshot_saved = 0
 
     def setup(self):
         # remove any previous download / extracted tree so we always get the latest source
@@ -43,19 +45,62 @@ class VibeEmu(Emulator):
         screenshot = super().getScreenshot()
         if screenshot is None:
             return None
+
+        # Optional troubleshooting: save raw + cropped images to disk.
+        # Enable with env var, or flip DEBUG_ALWAYS to True temporarily.
+        DEBUG_ALWAYS = False
+        debug_enabled = DEBUG_ALWAYS or os.environ.get("VIBEEMU_DEBUG_SCREENSHOT", "").strip() not in ("", "0", "false", "False")
+
+        try:
+            limit = int(os.environ.get("VIBEEMU_DEBUG_SCREENSHOT_LIMIT", "10"))
+        except Exception:
+            limit = 10
+
+        should_save = debug_enabled and self._debug_screenshot_saved < max(limit, 0)
+        debug_dir = os.environ.get(
+            "VIBEEMU_DEBUG_SCREENSHOT_DIR",
+            os.path.join("downloads", "debug_screenshots", "vibeemu"),
+        )
+
+        tag = None
+        if should_save:
+            try:
+                os.makedirs(debug_dir, exist_ok=True)
+                stamp = time.strftime("%Y%m%d-%H%M%S")
+                tag = f"{stamp}-{int(time.time() * 1000)}-{self._debug_screenshot_saved:03d}"
+                raw_path = os.path.join(debug_dir, f"raw-{tag}-{screenshot.size[0]}x{screenshot.size[1]}.png")
+                screenshot.save(raw_path)
+            except Exception:
+                # Best-effort debugging; don't break test runs.
+                tag = None
+
         width, height = screenshot.size
         target_w, target_h = 160, 144
-        # vibeEmu is a normal desktop window; the captured image can include the
-        # title bar at the top. Crop a 160x144 region aligned to the bottom of
-        # the window so the title bar is excluded.
-        scale = min(max(width // target_w, 1), max(height // target_h, 1))
+        # vibeEmu shows a menu/title bar within the client area.
+        # The Game Boy framebuffer is displayed at a fixed 2x scale (320x288).
+        # Always take the bottom 288 pixels so the menu bar is excluded.
+        scale = 2
         crop_w = target_w * scale
         crop_h = target_h * scale
-        left = max((width - crop_w) // 2, 0)
         top = max(height - crop_h, 0)
+        bottom = height
+        left = max((width - crop_w) // 2, 0)
         right = min(left + crop_w, width)
-        bottom = min(top + crop_h, height)
         frame = screenshot.crop((left, top, right, bottom))
         if frame.size != (target_w, target_h):
             frame = frame.resize((target_w, target_h), PIL.Image.NEAREST)
-        return frame.convert("RGB")
+
+        frame = frame.convert("RGB")
+
+        if should_save and tag:
+            try:
+                crop_debug = f"cropbox=({left},{top})-({right},{bottom})"
+                print(f"vibeEmu screenshot: raw={screenshot.size} {crop_debug} cropped={frame.size}")
+                cropped_path = os.path.join(debug_dir, f"cropped-{tag}-{frame.size[0]}x{frame.size[1]}.png")
+                frame.save(cropped_path)
+            except Exception:
+                pass
+            finally:
+                self._debug_screenshot_saved += 1
+
+        return frame
