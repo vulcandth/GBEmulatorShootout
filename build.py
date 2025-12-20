@@ -1,6 +1,7 @@
 import json
 import os
 from time import gmtime, strftime
+import re
 
 emulators = json.load(open("emulators.json", "rt"))
 tests = json.load(open("tests.json", "rt"))
@@ -13,6 +14,13 @@ def _format_tested_date(ts):
         return strftime("%Y-%m-%d", gmtime(float(ts)))
     except Exception:
         return None
+
+
+def _make_safe_id(value, prefix="id"):
+    safe = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(value)).strip("-").lower()
+    if not safe:
+        safe = "item"
+    return f"{prefix}-{safe}"
 
 for name in emulators:
     if os.path.exists(emulators[name]['file']):
@@ -73,6 +81,22 @@ f.write("""<!doctype html>
                 }
             }
 
+            /* User-forced theme override (must win even when prefers-color-scheme is dark) */
+            :root[data-theme="light"] {
+                --bg: #ffffff;
+                --surface: #f7f7f8;
+                --surface-2: #ffffff;
+                --text: #111827;
+                --muted: #6b7280;
+                --border: #d1d5db;
+                --border-strong: #9ca3af;
+                --shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+
+                --pass: #b8f5a8;
+                --fail: #ffb3b3;
+                --unknown: #ffe49b;
+            }
+
             * { box-sizing: border-box; }
             html, body { height: 100%; }
             body {
@@ -107,6 +131,30 @@ f.write("""<!doctype html>
                 margin: 0;
                 color: var(--muted);
                 font-size: 13px;
+            }
+
+            .header-row {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 12px;
+                flex-wrap: wrap;
+            }
+            .header-right {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                justify-content: flex-end;
+                flex-wrap: wrap;
+            }
+            .theme-toggle {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 12px;
+                color: var(--muted);
+                user-select: none;
+                white-space: nowrap;
             }
 
             .table-shell {
@@ -174,9 +222,18 @@ f.write("""<!doctype html>
                 font-size: 11px;
             }
 
-            .col-filter {
-                display: block;
+            .col-filter-label {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
                 margin: 8px auto 0;
+                font-size: 11px;
+                line-height: 1.2;
+                color: var(--muted);
+                white-space: nowrap;
+            }
+            .col-filter {
                 font-size: 11px;
                 line-height: 1.2;
                 padding: 5px 8px;
@@ -223,31 +280,49 @@ f.write("""<!doctype html>
             }
             .test a:hover { color: var(--text); }
 
-            .tooltiptext {
-                visibility: hidden;
-                width: 240px;
-                background: var(--text);
-                color: var(--bg);
-                text-align: left;
-                padding: 10px 12px;
-                border-radius: 10px;
-                position: absolute;
-                z-index: 10;
-                left: calc(100% + 12px);
-                top: 50%;
-                transform: translateY(-50%);
-                box-shadow: var(--shadow);
-                white-space: normal;
+            .info-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 18px;
+                height: 18px;
+                margin-left: 6px;
+                border-radius: 999px;
+                border: 1px solid var(--border);
+                background: var(--surface-2);
+                color: var(--muted);
+                font-size: 12px;
+                line-height: 1;
+                cursor: pointer;
+                vertical-align: middle;
             }
-            th.test { position: sticky; }
-            th.test:hover .tooltiptext { visibility: visible; }
+            .info-btn:hover { color: var(--text); }
+            .info-popover {
+                max-width: 320px;
+                position: fixed;
+                inset: auto;
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                background: var(--surface-2);
+                color: var(--text);
+                padding: 10px 12px;
+                box-shadow: var(--shadow);
+            }
         </style>
     </head>
     <body>
         <main class=\"page\">
             <header>
-                <h1>GB Emulator Shootout</h1>
-                <p>Last site update: """ + strftime("%a, %d %b %Y %H:%M:%S +0000", gmtime()) + """</p>
+                <div class=\"header-row\">
+                    <h1>GB Emulator Shootout</h1>
+                    <div class=\"header-right\">
+                        <label class=\"theme-toggle\">
+                            <input type=\"checkbox\" id=\"lightThemeToggle\" />
+                            Light theme
+                        </label>
+                        <p>Last site update: """ + strftime("%a, %d %b %Y %H:%M:%S +0000", gmtime()) + """</p>
+                    </div>
+                </div>
             </header>
 
             <section class=\"table-shell\">
@@ -255,31 +330,35 @@ f.write("""<!doctype html>
                     <table>
                         <thead>
                             <tr>
-                                <th style=\"text-align:left\">Updated On<br><span class=\"emu-meta\">""" + strftime("%Y-%m-%d", gmtime()) + """</span></th>
+                                <th style=\"text-align:left\">Updated On<br><span class=\"emu-meta\">""" + strftime("%Y-%m-%d", gmtime()) + """</span><span class=\"emu-meta\">Tests: <span id=\"rowCount\">""" + str(len(tests)) + """</span></span></th>
 """)
 for col_index, (name, emulator) in enumerate(sorted_emulators, start=2):
     tested = emulator.get('tested_str')
-    tested_part = ("Tested: %s" % tested) if tested else "Tested: &mdash;"
+    tested_part = ("Tested %s" % tested) if tested else "Tested &mdash;"
     f.write(
         "                <th class='emulator'>"
         "<span class='emu-title'><a href=\"%s\">%s</a></span>"
-        "<span class='emu-meta'>%s &nbsp;&middot;&nbsp; %d/%d</span>"
-        "<select class=\"col-filter\" data-col=\"%d\" aria-label=\"Filter %s\">"
-        "<option value=\"NONE\" selected>Filter: NONE</option>"
+        "<span class='emu-meta'>%d/%d &nbsp;&middot;&nbsp; %s</span>"
+        "<label class=\"col-filter-label\">Filter: <select class=\"col-filter\" data-col=\"%d\" aria-label=\"Filter %s\">"
+        "<option value=\"ALL\" selected>ALL</option>"
         "<option value=\"PASS\">PASS</option>"
         "<option value=\"FAIL\">FAIL</option>"
         "<option value=\"INFO\">INFO</option>"
         "<option value=\"NO_RESULT\">NO_RESULT</option>"
-        "</select>"
-        "</th>\n" % (emulator['url'], name, tested_part, emulator['passed'], len(emulator['tests']), col_index, name)
+        "</select></label>"
+        "</th>\n" % (emulator['url'], name, emulator['passed'], len(emulator['tests']), tested_part, col_index, name)
     )
 f.write("              </tr>\n            </thead>\n            <tbody>\n")
-for test in tests:
+for test_index, test in enumerate(tests):
     name = test['name'].replace("/", "/&#8203;")
     if test['url']:
         name = "<a href=\"%s\">%s</a>" % (test['url'], name)
     if test['description']:
-        name += "<span class=\"tooltiptext\">%s</span>" % (test['description'])
+        pop_id = _make_safe_id(f"{test_index}-{test['name']}", prefix="testinfo")
+        name += (
+            "<button type=\"button\" class=\"info-btn\" popovertarget=\"%s\" aria-label=\"Show test info\">i</button>"
+            "<div id=\"%s\" class=\"info-popover\" popover>%s</div>" % (pop_id, pop_id, test['description'])
+        )
     f.write("<tr><th class='test'>%s</th>\n" % (name))
     for name, emulator in sorted_emulators:
         result = emulator['tests'].get(test['name'])
@@ -298,11 +377,111 @@ f.write("""            </tbody>
             (function () {
                 const selects = Array.from(document.querySelectorAll('.col-filter'));
                 const rows = Array.from(document.querySelectorAll('tbody tr'));
+                const rowCount = document.getElementById('rowCount');
+
+                function updateRowCount() {
+                    if (!rowCount) return;
+                    rowCount.textContent = String(rows.filter(r => !r.hidden).length);
+                }
+
+                // Light theme toggle (forces light regardless of system setting)
+                const themeToggle = document.getElementById('lightThemeToggle');
+                const THEME_KEY = 'gbes-theme-force-light';
+                function applyThemeFromStorage() {
+                    const forceLight = localStorage.getItem(THEME_KEY) === '1';
+                    if (forceLight) {
+                        document.documentElement.setAttribute('data-theme', 'light');
+                    } else {
+                        document.documentElement.removeAttribute('data-theme');
+                    }
+                    if (themeToggle) themeToggle.checked = forceLight;
+                }
+                if (themeToggle) {
+                    themeToggle.addEventListener('change', () => {
+                        localStorage.setItem(THEME_KEY, themeToggle.checked ? '1' : '0');
+                        applyThemeFromStorage();
+                    });
+                }
+                applyThemeFromStorage();
+
+                // Position Popover tooltips near the clicked info button.
+                // (Popover API has limited anchoring support across browsers.)
+                let openPopover = null;
+                function clamp(value, min, max) {
+                    return Math.min(Math.max(value, min), max);
+                }
+                function showPopoverNearButton(button) {
+                    const targetId = button.getAttribute('popovertarget');
+                    if (!targetId) return;
+                    const pop = document.getElementById(targetId);
+                    if (!pop) return;
+
+                    if (openPopover && openPopover !== pop) {
+                        try { openPopover.hidePopover(); } catch (e) {}
+                    }
+
+                    // Ensure it has an approximate size before positioning.
+                    // We'll temporarily show it offscreen if needed.
+                    let wasOpen = false;
+                    try {
+                        wasOpen = pop.matches(':popover-open');
+                    } catch (e) {
+                        // Some browsers may not support :popover-open; ignore.
+                    }
+
+                    if (!wasOpen) {
+                        try {
+                            pop.style.left = '-10000px';
+                            pop.style.top = '-10000px';
+                            pop.showPopover();
+                        } catch (e) {
+                            return;
+                        }
+                    }
+
+                    const btnRect = button.getBoundingClientRect();
+                    const popRect = pop.getBoundingClientRect();
+                    const gap = 8;
+
+                    // Prefer to the right; if not enough room, place left.
+                    let left = btnRect.right + gap;
+                    if (left + popRect.width > window.innerWidth - gap) {
+                        left = btnRect.left - gap - popRect.width;
+                    }
+                    // Align vertically centered on the button.
+                    let top = btnRect.top + (btnRect.height / 2) - (popRect.height / 2);
+
+                    left = clamp(left, gap, window.innerWidth - gap - popRect.width);
+                    top = clamp(top, gap, window.innerHeight - gap - popRect.height);
+
+                    pop.style.left = left + 'px';
+                    pop.style.top = top + 'px';
+                    openPopover = pop;
+                }
+
+                document.querySelectorAll('.info-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        showPopoverNearButton(btn);
+                    });
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (!openPopover) return;
+                    const target = e.target;
+                    if (target && (openPopover.contains(target) || target.closest && target.closest('.info-btn'))) {
+                        return;
+                    }
+                    try { openPopover.hidePopover(); } catch (err) {}
+                    openPopover = null;
+                });
 
                 function applyFilter(activeSelect) {
                     const value = activeSelect.value;
-                    if (value === 'NONE') {
+                    if (value === 'ALL') {
                         rows.forEach(r => r.hidden = false);
+                        updateRowCount();
                         return;
                     }
 
@@ -326,20 +505,24 @@ f.write("""            </tbody>
                         }
                         row.hidden = !match;
                     });
+
+                    updateRowCount();
                 }
 
                 selects.forEach(sel => {
                     sel.addEventListener('change', () => {
-                        if (sel.value !== 'NONE') {
+                        if (sel.value !== 'ALL') {
                             selects.forEach(other => {
-                                if (other !== sel) other.value = 'NONE';
+                                if (other !== sel) other.value = 'ALL';
                             });
                         }
 
-                        const active = selects.find(s => s.value !== 'NONE') || sel;
+                        const active = selects.find(s => s.value !== 'ALL') || sel;
                         applyFilter(active);
                     });
                 });
+
+                updateRowCount();
             })();
         </script>
     </body>
