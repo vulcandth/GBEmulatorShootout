@@ -32,8 +32,9 @@ right = min(left + crop_w, width)
 frame = screenshot.crop((left, top, right, bottom))
 
 # Resize if the cropped area isn't exactly 320x288
-if frame.size != (target_w, target_h):
-    frame = frame.resize((target_w, target_h), PIL.Image.NEAREST)
+# target_w=160, target_h=144, so we check against the 2x scale
+if frame.size != (320, 288):
+    frame = frame.resize((160, 144), PIL.Image.NEAREST)
 ```
 
 ### Test Results
@@ -42,10 +43,10 @@ Testing with various window sizes shows the cropping logic handles:
 | Input Size | Cropped Size | Result |
 |------------|--------------|--------|
 | 320x288 | 320x288 | ✓ Perfect - no resize needed |
-| 320x300 | 320x288 | ✓ Crops 12px from top (menu bar) |
+| 320x300 | 320x288 | ✓ Crops 12px from top |
 | 320x320 | 320x288 | ✓ Crops 32px from top |
-| 640x576 | 320x288 | ✓ Centers horizontally, crops from bottom |
-| 320x200 | 320x200 | ⚠️  Resizes to 160x144 (window too small) |
+| 640x576 | 320x288 | ✓ Centers and crops correctly |
+| 320x200 | 320x200 | ⚠️  Resizes to 160x144 (window too short) |
 | 300x288 | 300x288 | ⚠️  Resizes to 160x144 (window too narrow) |
 
 ## Why It Now Works
@@ -83,8 +84,8 @@ The current implementation is robust because it:
 ## Conclusion
 
 The issue was that screenshot cropping needed to be robust against window size variations between local and CI environments. The current implementation successfully handles this by:
-- Cropping adaptively based on actual window size
-- Always taking from the bottom (where the framebuffer is)
-- Resizing as a fallback for unexpected sizes
+- Cropping the bottom portion of the window to capture the 320x288 Game Boy framebuffer (displayed at 2x scale)
+- Centering horizontally when the window is wider than expected
+- Resizing as a fallback for unexpected window dimensions
 
 This ensures tests pass consistently in both environments.
