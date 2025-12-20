@@ -19,7 +19,119 @@ class VBA(Emulator):
         download("https://gbdev.gg8.se/files/roms/bootroms/dmg_boot.bin", "emu/vba/dmg_boot.bin")
 
     def startProcess(self, rom, *, model, required_features):
-        return subprocess.Popen(["emu/vba/VisualBoyAdvance-SDL.exe", os.path.abspath(rom)], cwd="emu/vba")
+        process = subprocess.Popen(["emu/vba/VisualBoyAdvance-SDL.exe", os.path.abspath(rom)], cwd="emu/vba")
+        # Windows 11 can apply rounded corners which leak background pixels into screenshots.
+        # Match the SameBoy/Emulicious approach: force square corners once the window exists.
+        forceSquareCornersAsync(self.title_check, timeout=15.0)
+        return process
+
+    def getScreenshot(self):
+        # VBA (SDL build) sometimes reports a 0x0 client rect for the top-level window.
+        # The actual render surface is typically a child HWND; capture that instead.
+        try:
+            import win32gui
+        except Exception:
+            return None
+
+        hwnd = findWindow(self.title_check)
+        if not hwnd:
+            return None
+
+        def _capture_client(target_hwnd):
+            rect = win32gui.GetClientRect(target_hwnd)
+            w = rect[2] - rect[0]
+            h = rect[3] - rect[1]
+            if w <= 0 or h <= 0:
+                return None
+            pos = win32gui.ClientToScreen(target_hwnd, (rect[0], rect[1]))
+            return pyautogui.screenshot(region=(pos[0], pos[1], w, h))
+
+        # Preferred: capture the emulator's client area directly.
+        screenshot = _capture_client(hwnd)
+
+        best_child = None
+        best_area = 0
+
+        def _enum_child(child_hwnd, _):
+            nonlocal best_child, best_area
+            try:
+                rect = win32gui.GetClientRect(child_hwnd)
+                w = rect[2] - rect[0]
+                h = rect[3] - rect[1]
+                area = w * h
+                if w > 0 and h > 0 and area > best_area:
+                    best_area = area
+                    best_child = child_hwnd
+            except Exception:
+                pass
+
+        try:
+            win32gui.EnumChildWindows(hwnd, _enum_child, None)
+        except Exception:
+            best_child = None
+
+        if screenshot is None and best_child is not None:
+            screenshot = _capture_client(best_child)
+        if screenshot is None:
+            # Fallback: capture the full window rectangle.
+            left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+            width = right - left
+            height = bottom - top
+            if width > 0 and height > 0:
+                screenshot = pyautogui.screenshot(region=(left, top, width, height))
+
+        if screenshot is None:
+            return None
+
+        w, h = screenshot.size
+        if w < 160 or h < 144:
+            return None
+
+        # Common case: the emulator renders at an integer scale (2x/3x/4x).
+        # In that case, downscale back to native resolution rather than cropping.
+        if w % 160 == 0 and h % 144 == 0:
+            sx = w // 160
+            sy = h // 144
+            if sx == sy and sx >= 1:
+                try:
+                    import PIL.Image
+                    out = screenshot.resize((160, 144), resample=PIL.Image.NEAREST)
+                    # VBA-SDL often produces a solid black scanline at the very top of the
+                    # rendered output. If detected, shift the image up by 1px and replicate
+                    # the last row.
+                    try:
+                        gray = out.convert("L")
+                        row0 = set(gray.crop((0, 0, 160, 1)).getdata())
+                        row1 = set(gray.crop((0, 1, 160, 2)).getdata())
+                        if len(row0) == 1 and next(iter(row0)) == 0 and len(row1) == 1 and next(iter(row1)) != 0:
+                            shifted = out.crop((0, 1, 160, 144))
+                            fixed = out.copy()
+                            fixed.paste(shifted, (0, 0))
+                            fixed.paste(shifted.crop((0, 142, 160, 143)), (0, 143))
+                            out = fixed
+                    except Exception:
+                        pass
+                    return out
+                except Exception:
+                    pass
+
+        # Fallback: center-crop.
+        x = (w - 160) // 2
+        y = (h - 144) // 2
+        out = screenshot.crop((x, y, x + 160, y + 144))
+        try:
+            gray = out.convert("L")
+            row0 = set(gray.crop((0, 0, 160, 1)).getdata())
+            row1 = set(gray.crop((0, 1, 160, 2)).getdata())
+            if len(row0) == 1 and next(iter(row0)) == 0 and len(row1) == 1 and next(iter(row1)) != 0:
+                shifted = out.crop((0, 1, 160, 144))
+                fixed = out.copy()
+                fixed.paste(shifted, (0, 0))
+                fixed.paste(shifted.crop((0, 142, 160, 143)), (0, 143))
+                out = fixed
+        except Exception:
+            pass
+        return out
 
 
 class VBAM(Emulator):

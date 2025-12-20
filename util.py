@@ -113,15 +113,39 @@ def extract(filename, path):
 
 def findWindow(title_check):
     import win32gui
-    def f(hwnd, results):
-        title = win32gui.GetWindowText(hwnd)
-        if title_check(title):
-            results.append(hwnd)
-    results = []
-    win32gui.EnumWindows(f, results)
-    if results:
-        return results[0]
-    return None
+
+    matches = []
+
+    def f(hwnd, _):
+        try:
+            title = win32gui.GetWindowText(hwnd)
+            if not title:
+                return
+            if not title_check(title):
+                return
+            if hasattr(win32gui, "IsWindowVisible") and not win32gui.IsWindowVisible(hwnd):
+                return
+
+            cr = win32gui.GetClientRect(hwnd)
+            cw = max(0, cr[2] - cr[0])
+            ch = max(0, cr[3] - cr[1])
+            client_area = cw * ch
+
+            wr = win32gui.GetWindowRect(hwnd)
+            ww = max(0, wr[2] - wr[0])
+            wh = max(0, wr[3] - wr[1])
+            window_area = ww * wh
+
+            matches.append((client_area, window_area, hwnd))
+        except Exception:
+            return
+
+    win32gui.EnumWindows(f, None)
+    if not matches:
+        return None
+
+    matches.sort(reverse=True)
+    return matches[0][2]
 
 def getScreenshot(title_check):
     import win32gui
@@ -142,16 +166,29 @@ def fullscreenScreenshot():
     return pyautogui.screenshot()
 
 def setDPIScaling(executable):
-    subprocess.run(["REG", "ADD", "HKCU\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers", "/V", os.path.abspath(executable), "/T", "REG_SZ", "/D", "~ HIGHDPIAWARE", "/F"])
+    subprocess.run(["REG", "ADD", r"HKCU\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers", "/V", os.path.abspath(executable), "/T", "REG_SZ", "/D", "~ HIGHDPIAWARE", "/F"])
 
 def compareImage(a, b):
-    a = a.convert(mode="L", dither=PIL.Image.NONE)
-    b = b.convert(mode="L", dither=PIL.Image.NONE)
-    result = PIL.ImageChops.difference(a, b)
-    for count, color in result.getcolors():
-        if color > 50:
+    if a is None or b is None:
+        return False
+
+    try:
+        if getattr(a, "size", None) != getattr(b, "size", None):
             return False
-    return True
+        if not a.size or a.size[0] <= 0 or a.size[1] <= 0:
+            return False
+
+        a = a.convert(mode="L", dither=PIL.Image.NONE)
+        b = b.convert(mode="L", dither=PIL.Image.NONE)
+        result = PIL.ImageChops.difference(a, b)
+
+        extrema = result.getextrema()
+        if extrema is None:
+            return False
+        # extrema is (min, max) for grayscale images
+        return extrema[1] <= 50
+    except Exception:
+        return False
 
 def imageToBase64(img):
     if img is None:
