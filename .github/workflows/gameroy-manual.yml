@@ -1,4 +1,4 @@
-name: VibeEmu Only (Manual)
+name: gameroy Only (Manual)
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 jobs:
-  vibeemu:
+  gameroy:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,25 +42,25 @@ jobs:
       - name: Generate shared metadata
         run: python main.py --dump-tests-json --dump-emulators-json
 
-      - name: Run vibeEmu-only test matrix
-        run: python main.py --emulator vibeEmu
+      - name: Run gameroy-only test matrix
+        run: python main.py --emulator 'gameroy'
 
-      - name: Prepare vibeEmu artifacts
+      - name: Prepare gameroy artifacts
         shell: powershell
         run: |
           git config --global user.name "github actions"
           git config --global user.email "github@actions"
           git clone --single-branch --branch gh-pages https://github.com/${{ github.repository }}.git pages
-          Copy-Item -Path emulators.json, tests.json, vibeemu.json -Destination pages -Force
+          Copy-Item -Path *.json -Destination pages -Force
           cd pages
           python build.py
-          git add emulators.json tests.json vibeemu.json index.html
+          git add *.json index.html
           $status = git status --porcelain
           if (-not $status) {
             Write-Host "No changes to commit"
             exit 0
           }
-          git commit -m 'Update vibeEmu results'
+          git commit -m 'Update gameroy results'
 
       - name: Push page changes
         uses: ad-m/github-push-action@master
