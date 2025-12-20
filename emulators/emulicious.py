@@ -57,4 +57,5 @@ class Emulicious(Emulator):
         screenshot = getScreenshot(self.title_check)
         if screenshot is None:
             return None
-        return screenshot.crop((0, screenshot.size[1] - 144, 160, screenshot.size[1]))
+        # Emulicious' content is shifted slightly; capture starting 2px from the left edge.
+        return screenshot.crop((2, screenshot.size[1] - 144, 2 + 160, screenshot.size[1]))

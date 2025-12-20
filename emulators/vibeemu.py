@@ -49,8 +49,7 @@ class VibeEmu(Emulator):
         crop_w = target_w * scale
         crop_h = target_h * scale
         left = max((width - crop_w) // 2, 0)
-        # vibeEmu's menubar/titlebar is at the top of the window; align to bottom.
-        top = max(height - crop_h, 0)
+        top = max((height - crop_h) // 2, 0)
         frame = screenshot.crop((left, top, left + crop_w, top + crop_h))
         if frame.size != (target_w, target_h):
             frame = frame.resize((target_w, target_h), PIL.Image.NEAREST)
