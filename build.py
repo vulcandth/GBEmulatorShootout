@@ -7,31 +7,34 @@ import time
 last_site_update = time.strftime("%Y-%m-%d %H:%M %Z", time.gmtime())
 
 # Load the data from JSON
-emulators = json.load(open("emulators.json", "rt"))
-tests = json.load(open("tests.json", "rt"))
+with open("emulators.json", "rt") as file:
+    emulators = json.load(file)
+with open("tests.json", "rt") as file:
+    tests = json.load(file)
 
 for name in emulators:
-    if os.path.exists(emulators[name]['file']):
-        data = json.load(open(emulators[name]['file'], "rt"))
+    if os.path.exists(emulators[name]["file"]):
+        with open(emulators[name]["file"], "rt") as file:
+            data = json.load(file)
         emulators[name].update(data)
-        emulators[name]['passed'] = len([result for result in data['tests'].values() if result['result'] != "FAIL"])
+        emulators[name]["passed"] = len([result for result in data["tests"].values() if result["result"] != "FAIL"])
         # Prefer the timestamp recorded in the results JSON, otherwise fall back to the file modified time
-        tested_ts = data.get('date') or os.path.getmtime(emulators[name]['file'])
-        emulators[name]['tested'] = tested_ts
+        tested_ts = data.get("date") or os.path.getmtime(emulators[name]["file"])
+        emulators[name]["tested"] = tested_ts
         try:
-            emulators[name]['tested_str'] = time.strftime("%Y-%m-%d", time.gmtime(float(tested_ts)))
+            emulators[name]["tested_str"] = time.strftime("%Y-%m-%d", time.gmtime(float(tested_ts)))
         except:
-            emulators[name]['tested_str'] = None
+            emulators[name]["tested_str"] = None
     else:
-        emulators[name].update({'passed': 0, 'tests': {}})
-        emulators[name]['tested'] = None
-        emulators[name]['tested_str'] = None
+        emulators[name].update({"passed": 0, "tests": {}})
+        emulators[name]["tested"] = None
+        emulators[name]["tested_str"] = None
 
 # Sort by the number of tests passed from highest to lowest, then by emulator name alphabetically
-emulators = dict(sorted(emulators.items(), key=lambda item: (-item[1]['passed'], item[0])))
+emulators = dict(sorted(emulators.items(), key=lambda item: (-item[1]["passed"], item[0])))
 
-file = open("index.html", "wt", encoding="utf-8", newline="\n")
-file.write("""<!doctype html>
+with open("index.html", "wt", encoding="utf-8", newline="\n") as file:
+    file.write("""<!doctype html>
 <html lang="en">
     <head>
         <meta charset="utf-8" />
@@ -289,53 +292,70 @@ file.write("""<!doctype html>
                         <tr>
                             <th style="text-align:left">
                                 Tests: <span id="rowCount" class="emu-meta">""" + str(len(tests)) + """</span>
-                            </th>
-""")
+                            </th>""")
 
-for col_index, (name, emulator) in enumerate(emulators.items(), start=2):
-    tested = emulator.get('tested_str')
-    tested_part = ("Tested %s" % tested) if tested else "Tested &mdash;"
-    file.write(
-        "                <th class='emulator'>"
-        "<span class='emu-title'><a href=\"%s\">%s</a></span>"
-        "<span class='emu-meta'>%d/%d &nbsp;&middot;&nbsp; %s</span>"
-        "<label class=\"col-filter-label\">Filter: <select class=\"col-filter\" data-col=\"%d\" aria-label=\"Filter %s\">"
-        "<option value=\"ALL\" selected>ALL</option>"
-        "<option value=\"PASS\">PASS</option>"
-        "<option value=\"FAIL\">FAIL</option>"
-        "<option value=\"INFO\">INFO</option>"
-        "<option value=\"NO_RESULT\">NO_RESULT</option>"
-        "</select></label>"
-        "</th>\n" % (emulator['url'], name, emulator['passed'], len(emulator['tests']), tested_part, col_index, name)
-    )
+    for col_index, (name, emulator) in enumerate(emulators.items(), start=2):
+        tested_str = emulator.get("tested_str")
+        file.write(f"""
+                            <th class="emulator">
+                                <span class="emu-title">
+                                    <a href="{emulator["url"]}">{name}</a>
+                                </span>
+                                <span class="emu-meta">
+                                    {emulator["passed"]}/{len(emulator["tests"])}
+                                    &nbsp;&middot;&nbsp;
+                                    {f"Tested {tested_str}" if tested_str else "Not yet tested"}
+                                </span>
+                                <label class="col-filter-label">
+                                    Filter:
+                                    <select class="col-filter" data-col="{col_index}" aria-label="Filter {name}">
+                                        <option value="ALL" selected>ALL</option>
+                                        <option value="PASS">PASS</option>
+                                        <option value="FAIL">FAIL</option>
+                                        <option value="INFO">INFO</option>
+                                        <option value="NO_RESULT">NO_RESULT</option>
+                                    </select>
+                                </label>
+                            </th>""")
 
-file.write("""
-                        </tr>
-                    </thead>
-                    <tbody>
-""")
+    file.write("""
+                            </tr>
+                        </thead>
+                        <tbody>""")
 
-for test_index, test in enumerate(tests):
-    name = test['name'].replace("/", "/&#8203;")
-    if test['url']:
-        name = "<a href=\"%s\">%s</a>" % (test['url'], name)
-    if test['description']:
-        test_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", test['name']).strip("-").lower() or "item"
-        pop_id = "testinfo-%d-%s" % (test_index, test_name)
-        name += (
-            "<button type=\"button\" class=\"info-btn\" popovertarget=\"%s\" aria-label=\"Show test info\">i</button>"
-            "<div id=\"%s\" class=\"info-popover\" popover>%s</div>" % (pop_id, pop_id, test['description'])
-        )
-    file.write("<tr><th class='test'>%s</th>\n" % (name,))
-    for name, emulator in emulators.items():
-        result = emulator['tests'].get(test['name'])
-        if result:
-            file.write("  <td class='%s'>%s<br><img class='screenshot' src='data:image/png;base64,%s'></td>\n" % (result['result'], result['result'], result['screenshot']))
-        else:
-            file.write("  <td class='NO_RESULT'>No result</td>\n")
-    file.write("</tr>\n")
+    for test_index, test in enumerate(tests):
+        content = test["name"].replace("/", "/&#8203;")
+        if test["url"]:
+            content = f"""<a href="{test["url"]}">{content}</a>"""
+        if test["description"]:
+            test_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", test["name"]).strip("-").lower() or "item"
+            popover_id = f"testinfo-{test_index}-{test_name}"
+            content = f"""
+                                {content}
+                                <button type="button" class="info-btn" popovertarget="{popover_id}" aria-label="Show test info">i</button>
+                                <div id="{popover_id}" class="info-popover" popover>
+                                    {test["description"]}
+                                </div>\n"""
+        file.write(f"""
+                            <tr>
+                                <th class="test">{content}</th>""")
+        for name, emulator in emulators.items():
+            result = emulator["tests"].get(test["name"])
+            if result:
+                file.write(f"""
+                                <td class="{result["result"]}">
+                                    {result["result"]}<br>
+                                    <img class="screenshot" src="data:image/png;base64,{result["screenshot"]}">
+                                </td>""")
+            else:
+                file.write("""
+                                <td class="NO_RESULT">
+                                    No result
+                                </td>""")
+        file.write("""
+                            </tr>""")
 
-file.write("""
+    file.write("""
                     </tbody>
                 </table>
             </div>
@@ -343,9 +363,9 @@ file.write("""
 
         <script>
             (function () {
-                const selects = Array.from(document.querySelectorAll('.col-filter'));
-                const rows = Array.from(document.querySelectorAll('tbody tr'));
-                const rowCount = document.getElementById('rowCount');
+                const selects = Array.from(document.querySelectorAll(".col-filter"));
+                const rows = Array.from(document.querySelectorAll("tbody tr"));
+                const rowCount = document.getElementById("rowCount");
 
                 function updateRowCount() {
                     if (!rowCount) return;
@@ -359,30 +379,32 @@ file.write("""
                     return Math.min(Math.max(value, min), max);
                 }
                 function showPopoverNearButton(button) {
-                    const targetId = button.getAttribute('popovertarget');
+                    const targetId = button.getAttribute("popovertarget");
                     if (!targetId) return;
                     const pop = document.getElementById(targetId);
                     if (!pop) return;
 
                     if (openPopover && openPopover !== pop) {
-                        try { openPopover.hidePopover(); } catch (e) {}
+                        try {
+                            openPopover.hidePopover();
+                        } catch (err) {}
                     }
 
                     // Ensure it has an approximate size before positioning.
                     // We'll temporarily show it offscreen if needed.
                     let wasOpen = false;
                     try {
-                        wasOpen = pop.matches(':popover-open');
-                    } catch (e) {
+                        wasOpen = pop.matches(":popover-open");
+                    } catch (err) {
                         // Some browsers may not support :popover-open; ignore.
                     }
 
                     if (!wasOpen) {
                         try {
-                            pop.style.left = '-10000px';
-                            pop.style.top = '-10000px';
+                            pop.style.left = "-10000px";
+                            pop.style.top = "-10000px";
                             pop.showPopover();
-                        } catch (e) {
+                        } catch (err) {
                             return;
                         }
                     }
@@ -402,32 +424,34 @@ file.write("""
                     left = clamp(left, gap, window.innerWidth - gap - popRect.width);
                     top = clamp(top, gap, window.innerHeight - gap - popRect.height);
 
-                    pop.style.left = left + 'px';
-                    pop.style.top = top + 'px';
+                    pop.style.left = left + "px";
+                    pop.style.top = top + "px";
                     openPopover = pop;
                 }
 
-                document.querySelectorAll('.info-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
+                document.querySelectorAll(".info-btn").forEach(btn => {
+                    btn.addEventListener("click", (e) => {
                         e.preventDefault();
                         e.stopPropagation();
                         showPopoverNearButton(btn);
                     });
                 });
 
-                document.addEventListener('click', (e) => {
+                document.addEventListener("click", (e) => {
                     if (!openPopover) return;
                     const target = e.target;
-                    if (target && (openPopover.contains(target) || target.closest && target.closest('.info-btn'))) {
+                    if (target && (openPopover.contains(target) || target.closest && target.closest(".info-btn"))) {
                         return;
                     }
-                    try { openPopover.hidePopover(); } catch (err) {}
+                    try {
+                        openPopover.hidePopover();
+                    } catch (err) {}
                     openPopover = null;
                 });
 
                 function applyFilter(activeSelect) {
                     const value = activeSelect.value;
-                    if (value === 'ALL') {
+                    if (value === "ALL") {
                         rows.forEach(r => r.hidden = false);
                         updateRowCount();
                         return;
@@ -443,11 +467,11 @@ file.write("""
 
                         const cls = cell.classList;
                         let match = false;
-                        if (value === 'NO_RESULT') {
-                            match = cls.contains('NO_RESULT') || cell.textContent.trim() === 'No result';
-                        } else if (value === 'INFO') {
+                        if (value === "NO_RESULT") {
+                            match = cls.contains("NO_RESULT") || cell.textContent.trim() === "No result";
+                        } else if (value === "INFO") {
                             // Treat UNKNOWN as part of INFO for filtering.
-                            match = cls.contains('INFO') || cls.contains('UNKNOWN');
+                            match = cls.contains("INFO") || cls.contains("UNKNOWN");
                         } else {
                             match = cls.contains(value);
                         }
@@ -458,14 +482,16 @@ file.write("""
                 }
 
                 selects.forEach(sel => {
-                    sel.addEventListener('change', () => {
-                        if (sel.value !== 'ALL') {
+                    sel.addEventListener("change", () => {
+                        if (sel.value !== "ALL") {
                             selects.forEach(other => {
-                                if (other !== sel) other.value = 'ALL';
+                                if (other !== sel) {
+                                    other.value = "ALL";
+                                }
                             });
                         }
 
-                        const active = selects.find(s => s.value !== 'ALL') || sel;
+                        const active = selects.find(s => s.value !== "ALL") || sel;
                         applyFilter(active);
                     });
                 });
@@ -474,5 +500,4 @@ file.write("""
             })();
         </script>
     </body>
-</html>
-""")
+</html>\n""")
