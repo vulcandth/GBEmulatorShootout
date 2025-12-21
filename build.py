@@ -1,54 +1,41 @@
 import json
 import os
-from time import gmtime, strftime
 import re
+import time
 
-current_time = gmtime()
+# Get the time before doing anything else
+last_site_update = time.strftime("%Y-%m-%d %H:%M %Z", time.gmtime())
 
+# Load the data from JSON
 emulators = json.load(open("emulators.json", "rt"))
 tests = json.load(open("tests.json", "rt"))
-
-
-def _format_tested_date(ts):
-    if ts is None:
-        return None
-    try:
-        return strftime("%Y-%m-%d", gmtime(float(ts)))
-    except Exception:
-        return None
-
-
-def _make_safe_id(value, prefix="id"):
-    safe = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(value)).strip("-").lower()
-    if not safe:
-        safe = "item"
-    return f"{prefix}-{safe}"
 
 for name in emulators:
     if os.path.exists(emulators[name]['file']):
         data = json.load(open(emulators[name]['file'], "rt"))
         emulators[name].update(data)
         emulators[name]['passed'] = len([result for result in data['tests'].values() if result['result'] != "FAIL"])
-        # Prefer the timestamp recorded in the results JSON, otherwise fall back
-        # to the file modified time.
-        tested_ts = data.get('date')
-        if tested_ts is None:
-            tested_ts = os.path.getmtime(emulators[name]['file'])
+        # Prefer the timestamp recorded in the results JSON, otherwise fall back to the file modified time
+        tested_ts = data.get('date') or os.path.getmtime(emulators[name]['file'])
         emulators[name]['tested'] = tested_ts
-        emulators[name]['tested_str'] = _format_tested_date(tested_ts)
+        try:
+            emulators[name]['tested_str'] = time.strftime("%Y-%m-%d", time.gmtime(float(tested_ts)))
+        except:
+            emulators[name]['tested_str'] = None
     else:
         emulators[name].update({'passed': 0, 'tests': {}})
         emulators[name]['tested'] = None
         emulators[name]['tested_str'] = None
 
-sorted_emulators = sorted(emulators.items(), key=lambda n: -n[1]['passed'])
+# Sort by the number of tests passed from highest to lowest, then by emulator name alphabetically
+emulators = dict(sorted(emulators.items(), key=lambda item: (-item[1]['passed'], item[0])))
 
-f = open("index.html", "wt", encoding="utf-8", newline="\n")
-f.write("""<!doctype html>
-<html lang=\"en\">
+file = open("index.html", "wt", encoding="utf-8", newline="\n")
+file.write("""<!doctype html>
+<html lang="en">
     <head>
-        <meta charset=\"utf-8\" />
-        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>GB Emulator Shootout</title>
         <style>
             :root {
@@ -83,8 +70,12 @@ f.write("""<!doctype html>
                 }
             }
 
-            * { box-sizing: border-box; }
-            html, body { height: 100%; }
+            * {
+                box-sizing: border-box;
+            }
+            html, body {
+                height: 100%;
+            }
             body {
                 margin: 0;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
@@ -92,20 +83,30 @@ f.write("""<!doctype html>
                 color: var(--text);
             }
 
-            a { color: inherit; text-decoration: none; }
-            a:hover { text-decoration: underline; }
+            a:link, a:visited {
+                color: inherit;
+                text-decoration: none;
+            }
+            a:hover {
+                text-decoration: underline;
+            }
 
             .page {
                 width: 100%;
-                max-width: none;
-                margin: 0 auto;
-                padding: 24px 16px 40px;
+                height: 100%;
+                margin: 0;
+                padding: 16px;
+                display: flex;
+                flex-direction: column;
             }
 
             header {
                 display: flex;
-                flex-direction: column;
-                gap: 6px;
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                flex-wrap: wrap;
                 margin-bottom: 16px;
             }
             header h1 {
@@ -113,38 +114,20 @@ f.write("""<!doctype html>
                 font-size: 20px;
                 letter-spacing: 0.2px;
             }
-            header p {
-                margin: 0;
+            header aside {
                 color: var(--muted);
                 font-size: 13px;
             }
-
-            .header-row {
-                display: flex;
-                align-items: flex-start;
-                justify-content: space-between;
-                gap: 12px;
-                flex-wrap: wrap;
-            }
-            .header-right {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                justify-content: flex-end;
-                flex-wrap: wrap;
+            header aside a:link {
+                text-decoration: underline;
             }
 
-            .table-shell {
+            .table-wrap {
                 background: var(--surface);
                 border: 1px solid var(--border);
-                border-radius: 14px;
                 box-shadow: var(--shadow);
-                overflow: hidden;
-            }
-            .table-wrap {
                 overflow: auto;
                 -webkit-overflow-scrolling: touch;
-                max-height: calc(100vh - 160px);
             }
 
             table {
@@ -161,7 +144,7 @@ f.write("""<!doctype html>
                 padding: 8px 10px;
                 text-align: center;
                 vertical-align: top;
-                line-height: 1.25;
+                line-height: 16px;
                 font-size: 12px;
                 white-space: nowrap;
             }
@@ -170,7 +153,7 @@ f.write("""<!doctype html>
                 position: sticky;
                 top: 0;
                 z-index: 3;
-                background: color-mix(in srgb, var(--surface) 75%, transparent);
+                background: color-mix(in srgb, var(--surface) 85%, transparent);
                 backdrop-filter: blur(10px);
                 border-bottom: 1px solid var(--border-strong);
             }
@@ -193,10 +176,9 @@ f.write("""<!doctype html>
                 font-size: 13px;
             }
             .emu-meta {
-                display: block;
-                margin-top: 4px;
                 color: var(--muted);
                 font-size: 11px;
+                line-height: 16px;
             }
 
             .col-filter-label {
@@ -206,13 +188,13 @@ f.write("""<!doctype html>
                 gap: 6px;
                 margin: 8px auto 0;
                 font-size: 11px;
-                line-height: 1.2;
+                line-height: 16px;
                 color: var(--muted);
                 white-space: nowrap;
             }
             .col-filter {
                 font-size: 11px;
-                line-height: 1.2;
+                line-height: 16px;
                 padding: 5px 8px;
                 border: 1px solid var(--border);
                 background: var(--surface-2);
@@ -249,31 +231,32 @@ f.write("""<!doctype html>
                 overflow-wrap: anywhere;
                 word-break: break-word;
             }
-            .test a {
+            .test a:link, .test a:visited, .test a:hover {
                 font-weight: 600;
-                color: var(--muted);
+                color: var(--text);
                 text-decoration: underline;
                 text-underline-offset: 2px;
             }
-            .test a:hover { color: var(--text); }
 
             .info-btn {
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                width: 18px;
-                height: 18px;
+                width: 16px;
+                height: 16px;
                 margin-left: 6px;
-                border-radius: 999px;
+                border-radius: 8px;
                 border: 1px solid var(--border);
                 background: var(--surface-2);
                 color: var(--muted);
-                font-size: 12px;
-                line-height: 1;
+                font-size: 11px;
+                line-height: 16px;
                 cursor: pointer;
                 vertical-align: middle;
             }
-            .info-btn:hover { color: var(--text); }
+            .info-btn:hover {
+                color: var(--text);
+            }
             .info-popover {
                 max-width: 320px;
                 position: fixed;
@@ -288,27 +271,31 @@ f.write("""<!doctype html>
         </style>
     </head>
     <body>
-        <main class=\"page\">
+        <main class="page">
             <header>
-                <div class=\"header-row\">
-                    <h1>GB Emulator Shootout</h1>
-                    <div class=\"header-right\">
-                        <p>Last site update: """ + strftime("%Y-%m-%d %H:%M", current_time) + """</p>
-                    </div>
-                </div>
+                <h1>
+                    <a href="https://vulcandth.github.io/GBEmulatorShootout/">GB Emulator Shootout</a>
+                </h1>
+                <aside>
+                    <a href="https://github.com/vulcandth/GBEmulatorShootout">GitHub</a>
+                    &middot;
+                    Last site update: """ + last_site_update + """
+                </aside>
             </header>
 
-            <section class=\"table-shell\">
-                <div class=\"table-wrap\">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th style=\"text-align:left\">Updated On<br><span class=\"emu-meta\">""" + strftime("%Y-%m-%d", current_time) + """</span><span class=\"emu-meta\">Tests: <span id=\"rowCount\">""" + str(len(tests)) + """</span></span></th>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="text-align:left">
+                                Tests: <span id="rowCount" class="emu-meta">""" + str(len(tests)) + """</span>
+                            </th>
 """)
-for col_index, (name, emulator) in enumerate(sorted_emulators, start=2):
+
+for col_index, (name, emulator) in enumerate(emulators.items(), start=2):
     tested = emulator.get('tested_str')
     tested_part = ("Tested %s" % tested) if tested else "Tested &mdash;"
-    f.write(
+    file.write(
         "                <th class='emulator'>"
         "<span class='emu-title'><a href=\"%s\">%s</a></span>"
         "<span class='emu-meta'>%d/%d &nbsp;&middot;&nbsp; %s</span>"
@@ -321,29 +308,37 @@ for col_index, (name, emulator) in enumerate(sorted_emulators, start=2):
         "</select></label>"
         "</th>\n" % (emulator['url'], name, emulator['passed'], len(emulator['tests']), tested_part, col_index, name)
     )
-f.write("              </tr>\n            </thead>\n            <tbody>\n")
+
+file.write("""
+                        </tr>
+                    </thead>
+                    <tbody>
+""")
+
 for test_index, test in enumerate(tests):
     name = test['name'].replace("/", "/&#8203;")
     if test['url']:
         name = "<a href=\"%s\">%s</a>" % (test['url'], name)
     if test['description']:
-        pop_id = _make_safe_id(f"{test_index}-{test['name']}", prefix="testinfo")
+        test_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", test['name']).strip("-").lower() or "item"
+        pop_id = "testinfo-%d-%s" % (test_index, test_name)
         name += (
             "<button type=\"button\" class=\"info-btn\" popovertarget=\"%s\" aria-label=\"Show test info\">i</button>"
             "<div id=\"%s\" class=\"info-popover\" popover>%s</div>" % (pop_id, pop_id, test['description'])
         )
-    f.write("<tr><th class='test'>%s</th>\n" % (name))
-    for name, emulator in sorted_emulators:
+    file.write("<tr><th class='test'>%s</th>\n" % (name,))
+    for name, emulator in emulators.items():
         result = emulator['tests'].get(test['name'])
         if result:
-            f.write("  <td class='%s'>%s<br><img class='screenshot' src='data:image/png;base64,%s'></td>\n" % (result['result'], result['result'], result['screenshot']))
+            file.write("  <td class='%s'>%s<br><img class='screenshot' src='data:image/png;base64,%s'></td>\n" % (result['result'], result['result'], result['screenshot']))
         else:
-            f.write("  <td class='NO_RESULT'>No result</td>\n")
-    f.write("</tr>\n")
-f.write("""            </tbody>
-                    </table>
-                </div>
-            </section>
+            file.write("  <td class='NO_RESULT'>No result</td>\n")
+    file.write("</tr>\n")
+
+file.write("""
+                    </tbody>
+                </table>
+            </div>
         </main>
 
         <script>
