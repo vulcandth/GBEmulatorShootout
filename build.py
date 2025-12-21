@@ -223,6 +223,7 @@ with open("index.html", "wt", encoding="utf-8", newline="\n") as file:
                 border-radius: 0;
                 border: 1px solid var(--border);
                 background: var(--surface-2);
+                box-sizing: content-box;
             }
 
             .test {
