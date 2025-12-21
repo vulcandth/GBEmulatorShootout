@@ -3,6 +3,8 @@ import os
 from time import gmtime, strftime
 import re
 
+current_time = gmtime()
+
 emulators = json.load(open("emulators.json", "rt"))
 tests = json.load(open("tests.json", "rt"))
 
@@ -291,7 +293,7 @@ f.write("""<!doctype html>
                 <div class=\"header-row\">
                     <h1>GB Emulator Shootout</h1>
                     <div class=\"header-right\">
-                        <p>Last site update: """ + strftime("%a, %d %b %Y %H:%M:%S +0000", gmtime()) + """</p>
+                        <p>Last site update: """ + strftime("%Y-%m-%d %H:%M", current_time) + """</p>
                     </div>
                 </div>
             </header>
@@ -301,7 +303,7 @@ f.write("""<!doctype html>
                     <table>
                         <thead>
                             <tr>
-                                <th style=\"text-align:left\">Updated On<br><span class=\"emu-meta\">""" + strftime("%Y-%m-%d", gmtime()) + """</span><span class=\"emu-meta\">Tests: <span id=\"rowCount\">""" + str(len(tests)) + """</span></span></th>
+                                <th style=\"text-align:left\">Updated On<br><span class=\"emu-meta\">""" + strftime("%Y-%m-%d", current_time) + """</span><span class=\"emu-meta\">Tests: <span id=\"rowCount\">""" + str(len(tests)) + """</span></span></th>
 """)
 for col_index, (name, emulator) in enumerate(sorted_emulators, start=2):
     tested = emulator.get('tested_str')
