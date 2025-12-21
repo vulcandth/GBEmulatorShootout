@@ -37,22 +37,6 @@
                 }
             }
 
-            /* User-forced theme override (must win even when prefers-color-scheme is dark) */
-            :root[data-theme="light"] {
-                --bg: #ffffff;
-                --surface: #f7f7f8;
-                --surface-2: #ffffff;
-                --text: #111827;
-                --muted: #6b7280;
-                --border: #d1d5db;
-                --border-strong: #9ca3af;
-                --shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
-
-                --pass: #b8f5a8;
-                --fail: #ffb3b3;
-                --unknown: #ffe49b;
-            }
-
             * { box-sizing: border-box; }
             html, body { height: 100%; }
             body {
@@ -102,15 +86,6 @@
                 gap: 12px;
                 justify-content: flex-end;
                 flex-wrap: wrap;
-            }
-            .theme-toggle {
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
-                font-size: 12px;
-                color: var(--muted);
-                user-select: none;
-                white-space: nowrap;
             }
 
             .table-shell {
@@ -272,11 +247,7 @@
                 <div class="header-row">
                     <h1>GB Emulator Shootout</h1>
                     <div class="header-right">
-                        <label class="theme-toggle">
-                            <input type="checkbox" id="lightThemeToggle" />
-                            Light theme
-                        </label>
-                        <p>Last site update: Sat, 20 Dec 2025 20:41:56 +0000</p>
+                        <p>Last site update: Sun, 21 Dec 2025 05:17:45 +0000</p>
                     </div>
                 </div>
             </header>
@@ -286,7 +257,7 @@
                     <table>
                         <thead>
                             <tr>
-                                <th style="text-align:left">Updated On<br><span class="emu-meta">2025-12-20</span><span class="emu-meta">Tests: <span id="rowCount">263</span></span></th>
+                                <th style="text-align:left">Updated On<br><span class="emu-meta">2025-12-21</span><span class="emu-meta">Tests: <span id="rowCount">263</span></span></th>
                 <th class='emulator'><span class='emu-title'><a href="https://sameboy.github.io/">SameBoy</a></span><span class='emu-meta'>253/263 &nbsp;&middot;&nbsp; Tested 2025-12-20</span><label class="col-filter-label">Filter: <select class="col-filter" data-col="2" aria-label="Filter SameBoy"><option value="ALL" selected>ALL</option><option value="PASS">PASS</option><option value="FAIL">FAIL</option><option value="INFO">INFO</option><option value="NO_RESULT">NO_RESULT</option></select></label></th>
                 <th class='emulator'><span class='emu-title'><a href="https://emulicious.net/">Emulicious</a></span><span class='emu-meta'>253/261 &nbsp;&middot;&nbsp; Tested 2025-12-20</span><label class="col-filter-label">Filter: <select class="col-filter" data-col="3" aria-label="Filter Emulicious"><option value="ALL" selected>ALL</option><option value="PASS">PASS</option><option value="FAIL">FAIL</option><option value="INFO">INFO</option><option value="NO_RESULT">NO_RESULT</option></select></label></th>
                 <th class='emulator'><span class='emu-title'><a href="https://mattcurrie.com/bdm-demo/">Beaten Dying Moon</a></span><span class='emu-meta'>249/263 &nbsp;&middot;&nbsp; Tested 2025-12-20</span><label class="col-filter-label">Filter: <select class="col-filter" data-col="4" aria-label="Filter Beaten Dying Moon"><option value="ALL" selected>ALL</option><option value="PASS">PASS</option><option value="FAIL">FAIL</option><option value="INFO">INFO</option><option value="NO_RESULT">NO_RESULT</option></select></label></th>
@@ -5320,26 +5291,6 @@
                     if (!rowCount) return;
                     rowCount.textContent = String(rows.filter(r => !r.hidden).length);
                 }
-
-                // Light theme toggle (forces light regardless of system setting)
-                const themeToggle = document.getElementById('lightThemeToggle');
-                const THEME_KEY = 'gbes-theme-force-light';
-                function applyThemeFromStorage() {
-                    const forceLight = localStorage.getItem(THEME_KEY) === '1';
-                    if (forceLight) {
-                        document.documentElement.setAttribute('data-theme', 'light');
-                    } else {
-                        document.documentElement.removeAttribute('data-theme');
-                    }
-                    if (themeToggle) themeToggle.checked = forceLight;
-                }
-                if (themeToggle) {
-                    themeToggle.addEventListener('change', () => {
-                        localStorage.setItem(THEME_KEY, themeToggle.checked ? '1' : '0');
-                        applyThemeFromStorage();
-                    });
-                }
-                applyThemeFromStorage();
 
                 // Position Popover tooltips near the clicked info button.
                 // (Popover API has limited anchoring support across browsers.)

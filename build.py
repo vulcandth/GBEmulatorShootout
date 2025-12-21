@@ -81,22 +81,6 @@ f.write("""<!doctype html>
                 }
             }
 
-            /* User-forced theme override (must win even when prefers-color-scheme is dark) */
-            :root[data-theme="light"] {
-                --bg: #ffffff;
-                --surface: #f7f7f8;
-                --surface-2: #ffffff;
-                --text: #111827;
-                --muted: #6b7280;
-                --border: #d1d5db;
-                --border-strong: #9ca3af;
-                --shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
-
-                --pass: #b8f5a8;
-                --fail: #ffb3b3;
-                --unknown: #ffe49b;
-            }
-
             * { box-sizing: border-box; }
             html, body { height: 100%; }
             body {
@@ -146,15 +130,6 @@ f.write("""<!doctype html>
                 gap: 12px;
                 justify-content: flex-end;
                 flex-wrap: wrap;
-            }
-            .theme-toggle {
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
-                font-size: 12px;
-                color: var(--muted);
-                user-select: none;
-                white-space: nowrap;
             }
 
             .table-shell {
@@ -316,10 +291,6 @@ f.write("""<!doctype html>
                 <div class=\"header-row\">
                     <h1>GB Emulator Shootout</h1>
                     <div class=\"header-right\">
-                        <label class=\"theme-toggle\">
-                            <input type=\"checkbox\" id=\"lightThemeToggle\" />
-                            Light theme
-                        </label>
                         <p>Last site update: """ + strftime("%a, %d %b %Y %H:%M:%S +0000", gmtime()) + """</p>
                     </div>
                 </div>
@@ -383,26 +354,6 @@ f.write("""            </tbody>
                     if (!rowCount) return;
                     rowCount.textContent = String(rows.filter(r => !r.hidden).length);
                 }
-
-                // Light theme toggle (forces light regardless of system setting)
-                const themeToggle = document.getElementById('lightThemeToggle');
-                const THEME_KEY = 'gbes-theme-force-light';
-                function applyThemeFromStorage() {
-                    const forceLight = localStorage.getItem(THEME_KEY) === '1';
-                    if (forceLight) {
-                        document.documentElement.setAttribute('data-theme', 'light');
-                    } else {
-                        document.documentElement.removeAttribute('data-theme');
-                    }
-                    if (themeToggle) themeToggle.checked = forceLight;
-                }
-                if (themeToggle) {
-                    themeToggle.addEventListener('change', () => {
-                        localStorage.setItem(THEME_KEY, themeToggle.checked ? '1' : '0');
-                        applyThemeFromStorage();
-                    });
-                }
-                applyThemeFromStorage();
 
                 // Position Popover tooltips near the clicked info button.
                 // (Popover API has limited anchoring support across browsers.)
