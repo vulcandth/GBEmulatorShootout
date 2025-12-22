@@ -9,7 +9,14 @@ import sys
 class PyBoy(Emulator):
     def __init__(self):
         super().__init__("PyBoy", "https://github.com/Baekalfen/PyBoy", startup_time=5.0)
-        self.title_check = lambda title: "CPU/frame" in title
+        # PyBoy's window title has changed across versions/backends.
+        # Older versions show performance stats like "CPU/frame: ... Emulation: ...".
+        # Newer versions/backends may show a simpler "PyBoy" title.
+        self.title_check = lambda title: (
+            ("cpu/frame" in title.lower())
+            or ("emulation" in title.lower())
+            or ("pyboy" in title.lower())
+        )
 
     def setup(self):
         download("https://gbdev.gg8.se/files/roms/bootroms/cgb_boot.bin", "emu/pyboy/cgb_boot.bin")
@@ -22,4 +29,22 @@ class PyBoy(Emulator):
     def startProcess(self, rom, *, model, required_features):
         if model != DMG:
             return None
-        return subprocess.Popen([sys.executable, "-m", "pyboy", "-b", "dmg_boot.bin", "-s", "1", os.path.abspath(rom)], cwd="emu/pyboy")
+        # Force SDL2 window backend: the default backend can vary and OpenGL init
+        # can be unreliable/slow on some CI runners.
+        return subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "pyboy",
+                "--window",
+                "SDL2",
+                "--dmg",
+                "--no-input",
+                "-b",
+                "dmg_boot.bin",
+                "-s",
+                "1",
+                os.path.abspath(rom),
+            ],
+            cwd="emu/pyboy",
+        )
