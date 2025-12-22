@@ -13,6 +13,8 @@ class VibeEmu(Emulator):
         super().__init__("vibeEmu", "https://github.com/vulcandth/vibeEmu", startup_time=1.0, features=(PCM,))
         self.title_check = lambda title: title and "vibe" in title.lower()
         self._debug_screenshot_saved = 0
+        self._dmg_bootrom = None
+        self._cgb_bootrom = None
 
     def setup(self):
         # remove any previous download / extracted tree so we always get the latest source
@@ -24,6 +26,15 @@ class VibeEmu(Emulator):
         download("https://codeload.github.com/vulcandth/vibeEmu/zip/main", "downloads/vibeemu.zip")
         extract("downloads/vibeemu.zip", "emu/vibeemu")
         self.path = os.path.join("emu", "vibeemu", os.listdir("emu/vibeemu")[0])
+
+        # Use the same public boot ROMs that SameBoy uses.
+        bootrom_dir = os.path.join("emu", "vibeemu", "bootroms")
+        os.makedirs(bootrom_dir, exist_ok=True)
+        self._cgb_bootrom = os.path.join(bootrom_dir, "cgb_boot.bin")
+        self._dmg_bootrom = os.path.join(bootrom_dir, "dmg_boot.bin")
+        download("https://gbdev.gg8.se/files/roms/bootroms/cgb_boot.bin", self._cgb_bootrom)
+        download("https://gbdev.gg8.se/files/roms/bootroms/dmg_boot.bin", self._dmg_bootrom)
+
         subprocess.Popen(["cargo", "build", "--release"], cwd=self.path).wait()
         self.exe = os.path.join(self.path, "target", "release", "vibe-emu-ui.exe")
         if not os.path.exists(self.exe):
@@ -33,9 +44,15 @@ class VibeEmu(Emulator):
 
     def startProcess(self, rom, *, model, required_features):
         if model == DMG:
-            args = [self.exe, "--dmg", "--dmg-neutral", os.path.abspath(rom)]
+            args = [self.exe, "--dmg", "--dmg-neutral"]
+            if self._dmg_bootrom and os.path.exists(self._dmg_bootrom):
+                args += ["--bootrom", os.path.abspath(self._dmg_bootrom)]
+            args += [os.path.abspath(rom)]
         elif model == CGB:
-            args = [self.exe, "--cgb", os.path.abspath(rom)]
+            args = [self.exe, "--cgb"]
+            if self._cgb_bootrom and os.path.exists(self._cgb_bootrom):
+                args += ["--bootrom", os.path.abspath(self._cgb_bootrom)]
+            args += [os.path.abspath(rom)]
         else:
             return None
 
