@@ -27,8 +27,11 @@ class PyBoy(Emulator):
         subprocess.Popen([sys.executable, "-m", "pip", "install", "pyboy"], cwd="emu/pyboy").wait()
     
     def startProcess(self, rom, *, model, required_features):
-        if model != DMG:
+        if model not in (DMG, CGB):
             return None
+
+        model_flag = "--dmg" if model == DMG else "--cgb"
+        bootrom = "dmg_boot.bin" if model == DMG else "cgb_boot.bin"
         # Force SDL2 window backend: the default backend can vary and OpenGL init
         # can be unreliable/slow on some CI runners.
         return subprocess.Popen(
@@ -38,10 +41,10 @@ class PyBoy(Emulator):
                 "pyboy",
                 "--window",
                 "SDL2",
-                "--dmg",
+                model_flag,
                 "--no-input",
                 "-b",
-                "dmg_boot.bin",
+                bootrom,
                 "-s",
                 "1",
                 os.path.abspath(rom),
