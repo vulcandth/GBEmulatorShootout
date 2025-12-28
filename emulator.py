@@ -36,7 +36,48 @@ class Emulator:
         return p.poll() is None
 
     def processOutput(self, p):
-        return p.poll()
+        # Best-effort crash info. If stdout/stderr are piped and the process has exited,
+        # capture them once so callers can include helpful diagnostics.
+        rc = p.poll()
+        if rc is None:
+            return None
+
+        cached = getattr(p, "_gbshootout_output", None)
+        if cached is not None:
+            return cached
+
+        out = None
+        err = None
+        try:
+            if getattr(p, "stdout", None) is not None or getattr(p, "stderr", None) is not None:
+                out, err = p.communicate(timeout=0.2)
+        except Exception:
+            out, err = None, None
+
+        def _to_text(v):
+            if v is None:
+                return None
+            if isinstance(v, bytes):
+                try:
+                    return v.decode("utf-8", errors="replace")
+                except Exception:
+                    return repr(v)
+            return str(v)
+
+        out = _to_text(out)
+        err = _to_text(err)
+        if out or err:
+            msg = ""
+            if err:
+                msg += f"stderr:\n{err.strip()}\n"
+            if out:
+                msg += f"stdout:\n{out.strip()}\n"
+            msg = msg.strip()
+            setattr(p, "_gbshootout_output", msg)
+            return msg
+
+        setattr(p, "_gbshootout_output", rc)
+        return rc
 
     def endProcess(self, p):
         p.terminate()
@@ -61,7 +102,9 @@ class Emulator:
         process_create_time = time.monotonic()
         while not self.isWindowOpen():
             time.sleep(0.01)
-            assert self.isProcessAlive(p), "Process crashed?"
+            if not self.isProcessAlive(p):
+                details = self.processOutput(p)
+                raise AssertionError(f"Process crashed? (exit: {self.returncode(p)})" + (f"\n{details}" if details else ""))
             assert time.monotonic() - process_create_time < 30.0, "Creating the window took longer then 30 seconds?"
         process_create_time = time.monotonic() - process_create_time
         self.postWindowCreation()
@@ -76,7 +119,9 @@ class Emulator:
                 if result is not None:
                     print("Early exit: %s: %g" % (result, time.monotonic() - start_time))
                     break
-            assert self.isProcessAlive(p), "Process crashed? (exit: %d)" % (self.returncode(p))
+            if not self.isProcessAlive(p):
+                details = self.processOutput(p)
+                raise AssertionError(f"Process crashed? (exit: {self.returncode(p)})" + (f"\n{details}" if details else ""))
         self.endProcess(p)
         if result is None:
             result = test.getDefaultResult()
