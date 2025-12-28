@@ -14,7 +14,7 @@ class Ares(Emulator):
         self.title_check = lambda title: "ares" in title
 
     def setup(self):
-        downloadGithubRelease("ares-emulator/ares", "downloads/ares.zip", filter=lambda n: "x64" in n and "windows" in n and n.endswith(".zip"), allow_prerelease=True)
+        downloadGithubRelease("ares-emulator/ares", "downloads/ares.zip", filter=lambda n: "x64" in n and "windows" in n and n.endswith(".zip") and "pdb" not in n.lower(), allow_prerelease=True)
         extract("downloads/ares.zip", "emu/ares")
 
         if not os.path.exists("emu/ares/ares.exe"):
