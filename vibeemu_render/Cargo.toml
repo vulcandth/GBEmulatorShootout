@@ -1,0 +1,8 @@
+[package]
+name = "vibeemu-render"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vibe-emu-core = { path = "../emu/vibeemu/vibeEmu-main/crates/vibe-emu-core" }
+png = "0.18"
