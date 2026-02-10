@@ -144,6 +144,8 @@ fn main() {
     eprintln!("Saved framebuffer to {}", output_path);
 }
 
+const RGB_BUFFER_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 3) as usize;
+
 fn save_framebuffer_png(framebuffer: &[u32], path: &str) {
     let file = fs::File::create(path).unwrap_or_else(|e| {
         eprintln!("Failed to create output file '{}': {}", path, e);
@@ -161,7 +163,7 @@ fn save_framebuffer_png(framebuffer: &[u32], path: &str) {
     });
 
     // Convert 0x00RRGGBB u32 framebuffer to RGB bytes
-    let mut rgb_data = Vec::with_capacity((SCREEN_WIDTH * SCREEN_HEIGHT * 3) as usize);
+    let mut rgb_data = Vec::with_capacity(RGB_BUFFER_SIZE);
     for &pixel in framebuffer {
         let r = ((pixel >> 16) & 0xFF) as u8;
         let g = ((pixel >> 8) & 0xFF) as u8;

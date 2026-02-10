@@ -15,8 +15,7 @@ GB_FPS = 59.7275
 
 class VibeEmu(Emulator):
     def __init__(self):
-        # Startup times (measured locally): DMG ~5.594s, CGB ~2.984s
-        super().__init__("vibeEmu", "https://github.com/vulcandth/vibeEmu", startup_time=6, features=(PCM,))
+        super().__init__("vibeEmu", "https://github.com/vulcandth/vibeEmu", startup_time=0, features=(PCM,))
         self._dmg_bootrom = None
         self._cgb_bootrom = None
 
