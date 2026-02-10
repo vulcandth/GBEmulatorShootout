@@ -10,6 +10,11 @@ const GB_FPS: f64 = 59.7275;
 const SCREEN_WIDTH: u32 = 160;
 const SCREEN_HEIGHT: u32 = 144;
 
+// Maximum CPU steps per frame to prevent infinite loops.
+// Normally a frame should complete in ~17556 steps (70224 cycles / 4 cycles per instruction average).
+// We allow significantly more steps (100000) as a safety margin before giving up on a frame.
+const MAX_STEPS_PER_FRAME: u64 = 100000;
+
 fn usage() -> ! {
     eprintln!(
         "Usage: vibeemu-render <rom> <output.png> [options]\n\
@@ -130,10 +135,22 @@ fn main() {
     );
 
     // Run emulation
-    for _ in 0..total_frames {
+    for frame_num in 0..total_frames {
         gb.mmu.ppu.clear_frame_flag();
+        let mut steps_this_frame = 0u64;
         while !gb.mmu.ppu.frame_ready() {
             gb.cpu.step(&mut gb.mmu);
+            steps_this_frame += 1;
+            
+            // Safety check: if we've exceeded the maximum steps per frame,
+            // break out to prevent infinite loops (e.g., from STOP instruction).
+            if steps_this_frame >= MAX_STEPS_PER_FRAME {
+                eprintln!(
+                    "Warning: Frame {} exceeded maximum step count ({} steps). Breaking out.",
+                    frame_num, steps_this_frame
+                );
+                break;
+            }
         }
     }
 
