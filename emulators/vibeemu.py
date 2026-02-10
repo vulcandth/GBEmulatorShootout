@@ -15,7 +15,7 @@ GB_FPS = 59.7275
 # Use SameBoy's measured startup timings as the minimum headless runtime so
 # vibeEmu runs long enough before capturing framebuffer results.
 # DMG: 6.5s (~389 frames), CGB: 3.5s (~209 frames) at GB_FPS.
-SAMEBOY_STARTUP_SECONDS = {
+STARTUP_SECONDS_BY_MODEL = {
     DMG: 6.5,
     CGB: 3.5,
 }
@@ -23,7 +23,7 @@ SAMEBOY_STARTUP_SECONDS = {
 
 class VibeEmu(Emulator):
     def __init__(self):
-        super().__init__("vibeEmu", "https://github.com/vulcandth/vibeEmu", startup_time=SAMEBOY_STARTUP_SECONDS[DMG], features=(PCM,))
+        super().__init__("vibeEmu", "https://github.com/vulcandth/vibeEmu", startup_time=STARTUP_SECONDS_BY_MODEL[DMG], features=(PCM,))
         self._dmg_bootrom = None
         self._cgb_bootrom = None
 
@@ -116,7 +116,7 @@ class VibeEmu(Emulator):
         model_arg = "dmg" if test.model == DMG else "cgb"
 
         # Convert test runtime (seconds) + SameBoy-aligned startup overhead to frame count.
-        startup_seconds = SAMEBOY_STARTUP_SECONDS.get(test.model, self.startup_time)
+        startup_seconds = STARTUP_SECONDS_BY_MODEL.get(test.model, self.startup_time)
         total_seconds = test.runtime + startup_seconds
         total_frames = int(total_seconds * GB_FPS) + 1
 
