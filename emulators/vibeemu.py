@@ -2,20 +2,20 @@ from util import *
 from emulator import Emulator
 from test import *
 import os
+import re
 import shutil
 import subprocess
 import time
 import PIL.Image
 
 
+# Game Boy LCD refresh rate used by the core.
+GB_FPS = 59.7275
+
+
 class VibeEmu(Emulator):
     def __init__(self):
-        # Startup times (measured locally): DMG ~5.594s, CGB ~2.984s
-        super().__init__("vibeEmu", "https://github.com/vulcandth/vibeEmu", startup_time=6, features=(PCM,))
-        # The actual window title is "vibeEmu" (and "vibeEmu – ..." for auxiliary windows).
-        # Keep this strict to avoid accidentally matching VS Code/editor windows.
-        self.title_check = lambda title: bool(title) and title.startswith("vibeEmu")
-        self._debug_screenshot_saved = 0
+        super().__init__("vibeEmu", "https://github.com/vulcandth/vibeEmu", startup_time=0, features=(PCM,))
         self._dmg_bootrom = None
         self._cgb_bootrom = None
 
@@ -65,110 +65,90 @@ class VibeEmu(Emulator):
         download("https://gbdev.gg8.se/files/roms/bootroms/cgb_boot.bin", self._cgb_bootrom)
         download("https://gbdev.gg8.se/files/roms/bootroms/dmg_boot.bin", self._dmg_bootrom)
 
-        # Only build if the release exe doesn't already exist or if rebuilding
-        self.exe = os.path.join(self.path, "target", "release", "vibe-emu-ui.exe")
-        if force_rebuild or not os.path.exists(self.exe):
-            subprocess.Popen(["cargo", "build", "--release"], cwd=self.path).wait()
-        if not os.path.exists(self.exe):
-            raise FileNotFoundError(f"Expected executable not found: {self.exe}")
-        setDPIScaling(self.exe)
-        setupMesa(os.path.dirname(self.exe))
+        # Build the headless renderer that hooks directly into vibe-emu-core.
+        render_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "vibeemu_render")
+        # Update the Cargo.toml dependency path to point at the extracted core crate.
+        core_crate_path = os.path.join(os.path.abspath(self.path), "crates", "vibe-emu-core")
+        # Use forward slashes for the TOML path value (works on all platforms).
+        core_crate_path_toml = core_crate_path.replace("\\", "/")
+        cargo_toml = os.path.join(render_dir, "Cargo.toml")
+        with open(cargo_toml, "r") as f:
+            content = f.read()
+        content = re.sub(
+            r'(vibe-emu-core\s*=\s*\{\s*path\s*=\s*)"[^"]*"',
+            lambda m: m.group(1) + '"' + core_crate_path_toml + '"',
+            content,
+        )
+        with open(cargo_toml, "w") as f:
+            f.write(content)
+
+        exe_name = "vibeemu-render.exe" if os.name == "nt" else "vibeemu-render"
+        self.render_exe = os.path.join(render_dir, "target", "release", exe_name)
+
+        if force_rebuild or not os.path.exists(self.render_exe):
+            subprocess.Popen(["cargo", "build", "--release"], cwd=render_dir).wait()
+        if not os.path.exists(self.render_exe):
+            raise FileNotFoundError(f"Expected renderer executable not found: {self.render_exe}")
 
     def startProcess(self, rom, *, model, required_features):
-        if model == DMG:
-            self.startup_time = 5.594
-            args = [self.exe, "--dmg", "--dmg-neutral"]
-            if self._dmg_bootrom and os.path.exists(self._dmg_bootrom):
-                args += ["--bootrom", os.path.abspath(self._dmg_bootrom)]
-            args += [os.path.abspath(rom)]
-        elif model == CGB:
-            self.startup_time = 2.984
-            args = [self.exe, "--cgb"]
-            if self._cgb_bootrom and os.path.exists(self._cgb_bootrom):
-                args += ["--bootrom", os.path.abspath(self._cgb_bootrom)]
-            args += [os.path.abspath(rom)]
-        else:
+        # Not used in the headless flow, but kept for compatibility.
+        return None
+
+    def run(self, test):
+        print("Running %s on %s" % (test, self))
+
+        sav_file = os.path.splitext(test.rom)[0] + ".sav"
+        if os.path.exists(sav_file):
+            os.unlink(sav_file)
+
+        if test.model == SGB:
+            print("%s cannot run %s (incompatible model)" % (self, test))
             return None
 
-        # Optional debug: print the exact args used to launch the emulator.
-        if os.environ.get("VIBEEMU_DEBUG_ARGS"):
-            print("vibeEmu launch:", args)
+        model_arg = "dmg" if test.model == DMG else "cgb"
 
-        return subprocess.Popen(args, cwd=self.path)
+        # Convert test runtime (seconds) + startup overhead to frame count.
+        total_seconds = test.runtime + self.startup_time
+        total_frames = int(total_seconds * GB_FPS) + 1
 
-    def getScreenshot(self):
-        screenshot = super().getScreenshot()
-        if screenshot is None:
-            return None
+        output_png = os.path.join("downloads", "vibeemu_framebuffer.png")
+        os.makedirs(os.path.dirname(output_png), exist_ok=True)
 
-        # Optional troubleshooting: save raw + cropped images to disk.
-        # Enable with env var, or flip DEBUG_ALWAYS to True temporarily.
-        DEBUG_ALWAYS = False
-        debug_enabled = DEBUG_ALWAYS or os.environ.get("VIBEEMU_DEBUG_SCREENSHOT", "").strip() not in ("", "0", "false", "False")
+        args = [
+            self.render_exe,
+            os.path.abspath(test.rom),
+            os.path.abspath(output_png),
+            "--model", model_arg,
+            "--frames", str(total_frames),
+        ]
 
+        # Use boot ROM for the appropriate model.
+        bootrom = self._dmg_bootrom if test.model == DMG else self._cgb_bootrom
+        if bootrom and os.path.exists(bootrom):
+            args += ["--bootrom", os.path.abspath(bootrom)]
+
+        start_time = time.monotonic()
+        p = subprocess.Popen(args)
+        rc = p.wait()
+        elapsed = time.monotonic() - start_time
+
+        if rc != 0:
+            print("vibeEmu renderer exited with code %d" % rc)
+            return TestResult(result=test.getDefaultResult(), screenshot=None, startuptime=0, runtime=elapsed)
+
+        # Load the rendered framebuffer PNG.
         try:
-            limit = int(os.environ.get("VIBEEMU_DEBUG_SCREENSHOT_LIMIT", "10"))
-        except Exception:
-            limit = 10
+            screenshot = PIL.Image.open(output_png).convert("RGB")
+        except Exception as e:
+            print("Failed to load renderer output: %s" % e)
+            return TestResult(result=test.getDefaultResult(), screenshot=None, startuptime=0, runtime=elapsed)
 
-        should_save = debug_enabled and self._debug_screenshot_saved < max(limit, 0)
-        debug_dir = os.environ.get(
-            "VIBEEMU_DEBUG_SCREENSHOT_DIR",
-            os.path.join("downloads", "debug_screenshots", "vibeemu"),
-        )
+        result = test.checkResult(screenshot)
+        if result is None:
+            result = test.getDefaultResult()
 
-        tag = None
-        if should_save:
-            try:
-                os.makedirs(debug_dir, exist_ok=True)
-                stamp = time.strftime("%Y%m%d-%H%M%S")
-                tag = f"{stamp}-{int(time.time() * 1000)}-{self._debug_screenshot_saved:03d}"
-                raw_path = os.path.join(debug_dir, f"raw-{tag}-{screenshot.size[0]}x{screenshot.size[1]}.png")
-                screenshot.save(raw_path)
-            except Exception:
-                # Best-effort debugging; don't break test runs.
-                tag = None
+        return TestResult(result=result, screenshot=screenshot, startuptime=0, runtime=elapsed)
 
-        width, height = screenshot.size
-        target_w, target_h = 160, 144
-        # vibeEmu renders the GB framebuffer with integer scaling in logical pixels.
-        # On Windows with DPI scaling, the captured client-area pixels can be a
-        # fractional multiple of 160x144 (e.g. 2x * 125% = 2.5x).
-        # Instead of assuming 2x (320x288), infer the framebuffer size from the
-        # client width and the GB aspect ratio (10:9), then crop from the bottom
-        # to exclude the menu bar.
-
-        crop_w = width
-        crop_h = int(round(crop_w * (target_h / target_w)))
-        if crop_h <= 0:
-            return None
-        if crop_h > height:
-            # If the window isn't tall enough for the inferred aspect, fall back
-            # to the largest possible crop that preserves the GB aspect.
-            crop_h = height
-            crop_w = int(round(crop_h * (target_w / target_h)))
-            crop_w = min(crop_w, width)
-
-        bottom = height
-        top = max(bottom - crop_h, 0)
-        left = max((width - crop_w) // 2, 0)
-        right = min(left + crop_w, width)
-        frame = screenshot.crop((left, top, right, bottom))
-        if frame.size != (target_w, target_h):
-            frame = frame.resize((target_w, target_h), PIL.Image.NEAREST)
-
-        frame = frame.convert("RGB")
-
-        if should_save and tag:
-            try:
-                crop_debug = f"cropbox=({left},{top})-({right},{bottom})"
-                if os.environ.get("VIBEEMU_DEBUG_SCREENSHOT_VERBOSE"):
-                    print(f"vibeEmu screenshot: raw={screenshot.size} {crop_debug} cropped={frame.size}")
-                cropped_path = os.path.join(debug_dir, f"cropped-{tag}-{frame.size[0]}x{frame.size[1]}.png")
-                frame.save(cropped_path)
-            except Exception:
-                pass
-            finally:
-                self._debug_screenshot_saved += 1
-
-        return frame
+    def measureStartupTime(self, *, model):
+        # Headless rendering has no meaningful startup time.
+        return 0.0, None
