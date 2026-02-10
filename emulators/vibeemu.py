@@ -1,5 +1,5 @@
 from util import *
-from emulator import Emulator
+from emulator import Emulator, TestResult
 from test import *
 import os
 import re
