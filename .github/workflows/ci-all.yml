@@ -72,6 +72,10 @@ jobs:
             needs_chromedriver: true
             needs_audio: false
             extra_requirements: requirements-emmy.txt
+          - emulator: DocBoy
+            needs_chromedriver: false
+            needs_audio: true
+            extra_requirements: ''
           - emulator: gameroy
             needs_chromedriver: false
             needs_audio: true
